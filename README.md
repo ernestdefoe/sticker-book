@@ -25,6 +25,12 @@ Members collect stickers in an album, a free pack every day, in your Flarum 2 co
 - Trades hold nothing while they wait. Accepting one runs in a single transaction that locks both members, takes each spare with a guarded update that can never go below one copy, and rolls everything back if a side no longer has the spares. A trade is accepted once, packs open once and the daily pack is claimed once, however fast the taps.
 - Uploaded art is re-encoded as WebP (SVG is never accepted).
 
+## Screenshots
+
+| The album (dark) | Trading spares | On a phone |
+| --- | --- | --- |
+| ![Album](screenshots/album-dark.png) | ![Trade](screenshots/trade.png) | ![Phone](screenshots/phone.png) |
+
 ## Install
 
 ```sh

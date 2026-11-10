@@ -1105,7 +1105,8 @@ body.StickerReveal-open {
 
 .StickerReveal {
   position: fixed;
-  z-index: 2000;
+  // Above cookie banners and theme chrome: the reveal is the whole screen while it is open.
+  z-index: 100000;
   inset: 0;
   display: grid;
   place-items: center;
@@ -1633,24 +1634,36 @@ body.StickerReveal-open {
   margin-top: 14px;
 }
 
-.StickerReveal-all {
-  background: rgba(255, 255, 255, 0.14) !important;
-  color: #fff !important;
+// Our own colours on our own dark stage, whatever the theme does to buttons.
+@{hi} .StickerReveal .Button {
+  border: 0;
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
 
   &:hover {
-    background: rgba(255, 255, 255, 0.24) !important;
+    background: rgba(255, 255, 255, 0.24);
+  }
+
+  &.Button--primary {
+    background: linear-gradient(135deg, #7c3aed, #db2777);
+    color: #fff;
+    box-shadow: 0 6px 18px rgba(124, 58, 237, 0.45);
   }
 }
 
-.StickerReveal .Button:not(.Button--primary):not(.StickerReveal-all) {
-  background: rgba(255, 255, 255, 0.14);
-  color: #fff;
+.StickerReveal-error {
+  margin: 14px auto 0;
+  max-width: 420px;
+  padding: 8px 14px;
+  border-radius: 10px;
+  background: rgba(225, 29, 72, 0.25);
+  color: #fecdd3;
 }
 
 // Confetti.
 .StickerConfetti {
   position: fixed;
-  z-index: 2100;
+  z-index: 100001;
   inset: 0;
   pointer-events: none;
 

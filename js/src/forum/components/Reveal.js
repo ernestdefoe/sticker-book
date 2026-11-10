@@ -1,7 +1,7 @@
 import app from 'flarum/forum/app';
 import Button from 'flarum/common/components/Button';
 import Icon from 'flarum/common/components/Icon';
-import { call, rarityName, reducedMotion, setStatus, status, t, until } from '../util';
+import { call, errorText, rarityName, reducedMotion, setStatus, status, t, until } from '../util';
 import confetti from '../confetti';
 import { loadStyles } from '../styles';
 
@@ -117,6 +117,7 @@ class Reveal {
           </span>
         </button>
         <p className="StickerReveal-hint">{this.stage === 'opening' ? t('reveal.opening') : t('reveal.tap')}</p>
+        {this.error ? <p className="StickerReveal-error">{this.error}</p> : null}
         {left > 1 ? <p className="StickerReveal-left">{t('reveal.left', { count: left })}</p> : null}
       </div>
     );
@@ -198,12 +199,15 @@ class Reveal {
   async open() {
     if (this.stage !== 'pack') return;
     this.stage = 'opening';
+    this.error = null;
     const started = Date.now();
 
     let result;
     try {
-      result = await call('POST', '/open');
+      // Quiet: an alert would sit under the reveal, so the reason shows on the stage.
+      result = await call('POST', '/open', undefined, true);
     } catch (e) {
+      this.error = errorText(e);
       this.stage = 'pack';
       m.redraw();
       return;

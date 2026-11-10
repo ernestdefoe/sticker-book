@@ -746,6 +746,12 @@
   gap: 8px;
   max-height: 260px;
   overflow-y: auto;
+
+  // Phones show the form full screen: one scroll for the whole form, not one per side.
+  @media @phone {
+    max-height: none;
+    overflow: visible;
+  }
 }
 
 .StickerTrade-item {

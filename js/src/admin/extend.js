@@ -73,6 +73,18 @@ export default [
       }),
       120
     )
+    .setting(
+      () => ({
+        setting: setting('trade_min_age'),
+        type: 'number',
+        min: 0,
+        max: 365,
+        label: t('settings.trade_min_age'),
+        help: t('settings.trade_min_age_help'),
+        placeholder: '7',
+      }),
+      110
+    )
     .permission(() => ({ permission: 'sticker-book.view', icon: 'fas fa-note-sticky', label: t('permissions.view'), allowGuest: true }), 'view', 60)
     .permission(() => ({ permission: 'sticker-book.collect', icon: 'fas fa-box-open', label: t('permissions.collect') }), 'reply', 60)
     .permission(() => ({ permission: 'sticker-book.trade', icon: 'fas fa-right-left', label: t('permissions.trade') }), 'reply', 59)

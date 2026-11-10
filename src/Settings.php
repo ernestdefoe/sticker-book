@@ -18,6 +18,7 @@ final class Settings
     public const LIKES = self::PREFIX.'likes_per_pack';    // likes received per pack; 0 = off
     public const EXTRA_CAP = self::PREFIX.'extra_cap';     // extra packs a day
     public const REACTIONS = self::PREFIX.'reactions';
+    public const TRADE_MIN_AGE = self::PREFIX.'trade_min_age';  // days an account must exist before it trades
 
     public const VIEW = 'sticker-book.view';
     public const COLLECT = 'sticker-book.collect';
@@ -65,6 +66,12 @@ final class Settings
     public function extraCap(): int
     {
         return $this->int(self::EXTRA_CAP, 2, 0, 20);
+    }
+
+    /** Days an account must be old to trade, so fresh accounts can't funnel stickers to a main one. */
+    public function tradeMinAge(): int
+    {
+        return $this->int(self::TRADE_MIN_AGE, 7, 0, 365);
     }
 
     public function reactions(): bool

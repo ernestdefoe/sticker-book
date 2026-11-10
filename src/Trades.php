@@ -39,7 +39,20 @@ class Trades
         private readonly Catalog $catalog,
         private readonly Collection $collection,
         private readonly NotificationSyncer $notifications,
+        private readonly Settings $settings,
     ) {
+    }
+
+    /**
+     * Accounts younger than the admin's minimum can't offer or accept trades,
+     * so a batch of fresh accounts can't funnel their packs into one album.
+     */
+    public function assertOldEnough(User $user): void
+    {
+        $days = $this->settings->tradeMinAge();
+        if ($days > 0 && $user->joined_at && $user->joined_at->gt(Carbon::now()->subDays($days))) {
+            throw new StickerException('sticker_trade_too_new', 403);
+        }
     }
 
     /**
@@ -51,6 +64,7 @@ class Trades
         if ($from->id === $to->id) {
             throw new StickerException('sticker_trade_self');
         }
+        $this->assertOldEnough($from);
         // A suspended member has no permissions (flarum/suspend), so this covers them too.
         if (! $to->hasPermission(Settings::TRADE)) {
             throw new StickerException('sticker_trade_unavailable');
@@ -95,6 +109,7 @@ class Trades
         if ($trade->to_user_id !== $actor->id) {
             throw new StickerException('sticker_trade_not_found', 404);
         }
+        $this->assertOldEnough($actor);
 
         $failed = false;
         $completed = [];

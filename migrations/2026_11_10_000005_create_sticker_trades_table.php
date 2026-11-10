@@ -21,8 +21,8 @@ return Migration::createTable('sticker_trades', function (Blueprint $table) {
     $table->dateTime('created_at');
     $table->dateTime('decided_at')->nullable();
 
-    $table->index(['to_user_id', 'status'], 'sticker_trades_to_status');
-    $table->index(['from_user_id', 'status'], 'sticker_trades_from_status');
-    $table->foreign('from_user_id', 'sticker_trades_from_fk')->references('id')->on('users')->cascadeOnDelete();
-    $table->foreign('to_user_id', 'sticker_trades_to_fk')->references('id')->on('users')->cascadeOnDelete();
+    $table->index(['to_user_id', 'status']);
+    $table->index(['from_user_id', 'status']);
+    $table->foreign('from_user_id')->references('id')->on('users')->cascadeOnDelete();
+    $table->foreign('to_user_id')->references('id')->on('users')->cascadeOnDelete();
 });

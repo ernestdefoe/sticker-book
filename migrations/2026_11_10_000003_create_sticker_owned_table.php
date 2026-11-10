@@ -15,7 +15,7 @@ return Migration::createTable('sticker_owned', function (Blueprint $table) {
     $table->dateTime('first_at');
 
     $table->primary(['user_id', 'sticker_id']);
-    $table->index(['sticker_id', 'count'], 'sticker_owned_spares');
-    $table->foreign('user_id', 'sticker_owned_user_fk')->references('id')->on('users')->cascadeOnDelete();
-    $table->foreign('sticker_id', 'sticker_owned_sticker_fk')->references('id')->on('stickers')->cascadeOnDelete();
+    $table->index(['sticker_id', 'count']);
+    $table->foreign('user_id')->references('id')->on('users')->cascadeOnDelete();
+    $table->foreign('sticker_id')->references('id')->on('stickers')->cascadeOnDelete();
 });

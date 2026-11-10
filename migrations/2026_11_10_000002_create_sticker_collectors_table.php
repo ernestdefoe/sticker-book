@@ -24,6 +24,6 @@ return Migration::createTable('sticker_collectors', function (Blueprint $table) 
     $table->unsignedInteger('unique_count')->default(0);
     $table->dateTime('last_opened_at')->nullable();
 
-    $table->index('unique_count', 'sticker_collectors_unique');
-    $table->foreign('user_id', 'sticker_collectors_user_fk')->references('id')->on('users')->cascadeOnDelete();
+    $table->index('unique_count');
+    $table->foreign('user_id')->references('id')->on('users')->cascadeOnDelete();
 });

@@ -18,6 +18,6 @@ return Migration::createTable('stickers', function (Blueprint $table) {
     $table->unsignedSmallInteger('position')->default(0);
     $table->timestamps();
 
-    $table->index(['set_id', 'position'], 'stickers_set_position');
-    $table->foreign('set_id', 'stickers_set_fk')->references('id')->on('sticker_sets')->cascadeOnDelete();
+    $table->index(['set_id', 'position']);
+    $table->foreign('set_id')->references('id')->on('sticker_sets')->cascadeOnDelete();
 });

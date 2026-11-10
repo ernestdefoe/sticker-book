@@ -16,6 +16,6 @@ return Migration::createTable('sticker_packs', function (Blueprint $table) {
     $table->dateTime('created_at');
     $table->dateTime('opened_at')->nullable();
 
-    $table->index(['user_id', 'opened_at'], 'sticker_packs_user_opened');
-    $table->foreign('user_id', 'sticker_packs_user_fk')->references('id')->on('users')->cascadeOnDelete();
+    $table->index(['user_id', 'opened_at']);
+    $table->foreign('user_id')->references('id')->on('users')->cascadeOnDelete();
 });

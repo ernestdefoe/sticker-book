@@ -10,6 +10,6 @@ return Migration::createTable('sticker_completions', function (Blueprint $table)
     $table->dateTime('completed_at');
 
     $table->primary(['user_id', 'set_id']);
-    $table->foreign('user_id', 'sticker_completions_user_fk')->references('id')->on('users')->cascadeOnDelete();
-    $table->foreign('set_id', 'sticker_completions_set_fk')->references('id')->on('sticker_sets')->cascadeOnDelete();
+    $table->foreign('user_id')->references('id')->on('users')->cascadeOnDelete();
+    $table->foreign('set_id')->references('id')->on('sticker_sets')->cascadeOnDelete();
 });

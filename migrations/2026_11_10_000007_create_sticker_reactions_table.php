@@ -11,8 +11,8 @@ return Migration::createTable('sticker_reactions', function (Blueprint $table) {
     $table->dateTime('created_at');
 
     $table->primary(['post_id', 'user_id']);
-    $table->index('user_id', 'sticker_reactions_user');
-    $table->foreign('post_id', 'sticker_reactions_post_fk')->references('id')->on('posts')->cascadeOnDelete();
-    $table->foreign('user_id', 'sticker_reactions_user_fk')->references('id')->on('users')->cascadeOnDelete();
-    $table->foreign('sticker_id', 'sticker_reactions_sticker_fk')->references('id')->on('stickers')->cascadeOnDelete();
+    $table->index('user_id');
+    $table->foreign('post_id')->references('id')->on('posts')->cascadeOnDelete();
+    $table->foreign('user_id')->references('id')->on('users')->cascadeOnDelete();
+    $table->foreign('sticker_id')->references('id')->on('stickers')->cascadeOnDelete();
 });

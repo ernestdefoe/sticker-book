@@ -8,12 +8,25 @@ const t = (key, params = {}) => app.translator.trans(`ernestdefoe-sticker-book.a
 const RARITIES = ['common', 'rare', 'epic', 'legendary'];
 const rarity = (r) => app.translator.trans(`ernestdefoe-sticker-book.admin.rarity.${RARITIES[r]}`);
 
+/** Our endpoints answer refusals with a code only; this turns it into its sentence (or Flarum's own, for validation). */
+function errorText(error) {
+  const first = error?.response?.errors?.[0];
+  const key = `ernestdefoe-sticker-book.lib.errors.${first?.code}`;
+  if (first?.code && app.translator.trans(key) !== key) return extractText(app.translator.trans(key));
+  if (first?.detail) return first.detail;
+  return extractText(app.translator.trans('core.lib.error.generic_message'));
+}
+
 function api(method, path, body, raw = false) {
   return app.request({
     method,
     url: app.forum.attribute('apiUrl') + '/sticker-book' + path,
     body,
     ...(raw ? { serialize: (data) => data } : {}),
+    errorHandler: (error) => {
+      app.alerts.show({ type: 'error' }, errorText(error));
+      throw error;
+    },
   });
 }
 
@@ -249,7 +262,7 @@ export default class SetsEditor {
           {sticker ? t('replace_art') : t('art')}
           <input
             type="file"
-            accept="image/png,image/webp,image/jpeg,image/gif"
+            accept="image/png,image/webp,image/jpeg"
             onchange={(e) => {
               f.file = e.target.files[0] || null;
               if (f.file) f.preview = URL.createObjectURL(f.file);

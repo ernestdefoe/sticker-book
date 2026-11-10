@@ -45,7 +45,7 @@ export default class StickerModal extends Modal {
           <span className="StickerModal-have">
             {s.count
               ? own
-                ? t('sticker.you_have', { count: s.count })
+                ? t('sticker.you_have', { count: s.count, spares: s.count - 1 })
                 : t('sticker.they_have', { name: owner.displayName, count: s.count })
               : own
                 ? t('sticker.you_need')

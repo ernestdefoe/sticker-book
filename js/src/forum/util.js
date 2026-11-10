@@ -9,7 +9,7 @@ export const rarityName = (r) => t(`rarity.${RARITIES[r] || 'common'}`);
 /** The sentence for an error answer from our endpoints. */
 export function errorText(error) {
   const code = error?.response?.errors?.[0]?.code;
-  const key = `ernestdefoe-sticker-book.forum.errors.${code}`;
+  const key = `ernestdefoe-sticker-book.lib.errors.${code}`;
   if (code && app.translator.trans(key) !== key) return extractText(app.translator.trans(key));
   if (error?.status === 0) return extractText(app.translator.trans('core.lib.error.network_message'));
   if (error?.status === 403 || error?.status === 401) return extractText(app.translator.trans('core.lib.error.permission_denied_message'));

@@ -325,24 +325,94 @@ class StickerBookTest extends TestCase
     }
 
     #[Test]
-    public function likes_earn_a_pack_and_unlikes_take_them_back(): void
+    public function each_like_counts_once_even_after_an_unlike(): void
     {
         $this->setting('ernestdefoe-sticker-book.likes_per_pack', 2);
-        $this->app();
         $earn = $this->app()->getContainer()->make(EarnPacks::class);
         $post = Post::query()->find(1);
-        $dana = User::query()->find(3);
+        $packs = fn () => $this->db()->table('sticker_packs')->where('user_id', 2)->count();
 
-        $earn->liked($post, $dana);
-        $earn->unliked($post, $dana);
-        $earn->liked($post, $dana);
-        $this->assertSame(0, $this->db()->table('sticker_packs')->where('user_id', 2)->count());
+        // Dana likes, unlikes and likes again: one like.
+        $earn->liked($post, User::query()->find(3));
+        $earn->liked($post, User::query()->find(3));
+        $this->assertSame(0, $packs());
+
+        // Sam's like makes two: a pack.
         $earn->liked($post, User::query()->find(4));
-        $this->assertSame(1, $this->db()->table('sticker_packs')->where('user_id', 2)->count());
+        $this->assertSame(1, $packs());
+
+        // After the pack, both take their likes back and like again: nothing more, ever.
+        foreach ([3, 4, 3, 4] as $liker) {
+            $earn->liked($post, User::query()->find($liker));
+        }
+        $this->assertSame(1, $packs());
+        $this->assertSame(0, (int) $this->db()->table('sticker_collectors')->where('user_id', 2)->value('like_progress'));
+
         // Liking your own post earns nothing.
         $earn->liked($post, User::query()->find(2));
         $earn->liked($post, User::query()->find(2));
-        $this->assertSame(1, $this->db()->table('sticker_packs')->where('user_id', 2)->count());
+        $this->assertSame(1, $packs());
+    }
+
+    #[Test]
+    public function a_post_awaiting_approval_earns_no_pack(): void
+    {
+        $earn = $this->app()->getContainer()->make(EarnPacks::class);
+        $post = new \Flarum\Post\CommentPost();
+        $post->setRawAttributes(['id' => 1, 'user_id' => 2, 'discussion_id' => 1, 'is_approved' => 0], true);
+        $post->setRelation('user', User::query()->find(2));
+
+        $earn->posted(new \Flarum\Post\Event\Posted($post));
+        $this->assertSame(0, $this->db()->table('sticker_packs')->where('user_id', 2)->count());
+
+        // Once approved, the day's first post counts.
+        $post->setRawAttributes(['id' => 1, 'user_id' => 2, 'discussion_id' => 1, 'is_approved' => 1], true);
+        $earn->posted(new \Flarum\Post\Event\Posted($post));
+        $this->assertSame(['post'], $this->db()->table('sticker_packs')->where('user_id', 2)->pluck('source')->all());
+    }
+
+    #[Test]
+    public function new_accounts_cannot_trade_until_they_are_old_enough(): void
+    {
+        $this->give(2, 1, 3);
+        $this->db()->table('users')->where('id', 2)->update(['joined_at' => Carbon::now()->subDays(2)]);
+
+        [$status, $body] = $this->api('POST', '/trades', 2, ['to' => 3, 'give' => [[1, 1]]]);
+        $this->assertSame(403, $status);
+        $this->assertSame('sticker_trade_too_new', $body['errors'][0]['code']);
+
+        // An older account offers; a new one can't accept.
+        $this->db()->table('users')->where('id', 2)->update(['joined_at' => Carbon::now()->subDays(30)]);
+        $this->db()->table('users')->where('id', 3)->update(['joined_at' => Carbon::now()->subDay()]);
+        $id = $this->api('POST', '/trades', 2, ['to' => 3, 'give' => [[1, 1]]])[1]['trades'][0]['id'];
+        $this->assertSame('sticker_trade_too_new', $this->api('POST', "/trades/$id/accept", 3)[1]['errors'][0]['code']);
+        $this->assertSame(3, $this->owns(2, 1));
+
+        // The admin can lower the bar.
+        $this->app()->getContainer()->make(\Flarum\Settings\SettingsRepositoryInterface::class)->set('ernestdefoe-sticker-book.trade_min_age', '0');
+        $this->assertSame(200, $this->api('POST', "/trades/$id/accept", 3)[0]);
+    }
+
+    #[Test]
+    public function index_names_are_prefixed_and_fit_with_a_long_prefix(): void
+    {
+        $schema = $this->db()->getSchemaBuilder();
+        $prefix = $this->db()->getTablePrefix();
+        $tables = ['sticker_sets', 'stickers', 'sticker_collectors', 'sticker_owned', 'sticker_packs', 'sticker_trades', 'sticker_completions', 'sticker_reactions', 'sticker_like_credits'];
+        $checked = 0;
+        foreach ($tables as $table) {
+            foreach ($schema->getIndexes($table) as $index) {
+                if ($index['primary'] || str_starts_with($index['name'], 'sqlite_autoindex')) {
+                    continue;
+                }
+                // Laravel's own names: the prefixed table name first, so two installs in one database never share one.
+                $this->assertStringStartsWith($prefix.$table.'_', $index['name']);
+                // Within MySQL's 64 characters even with a 9-character prefix such as "flarum01_".
+                $this->assertLessThanOrEqual(64, strlen($index['name']) - strlen($prefix) + 9, $index['name']);
+                $checked++;
+            }
+        }
+        $this->assertSame(8, $checked);
     }
 
     #[Test]

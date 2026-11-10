@@ -29,7 +29,6 @@ use ErnestDefoe\StickerBook\Listener\ForgetDeletedUser;
 use ErnestDefoe\StickerBook\Notification\TradeBlueprint;
 use ErnestDefoe\StickerBook\Packs;
 use ErnestDefoe\StickerBook\Settings;
-use ErnestDefoe\StickerBook\Storage\Art;
 use Flarum\Api\Context;
 use Flarum\Api\Resource\ForumResource;
 use Flarum\Api\Resource\PostResource;
@@ -57,8 +56,9 @@ return [
 
     new Extend\Locales(__DIR__.'/locale'),
 
+    // 🚨 String literals, not our own class constants: extend.php is read before our autoloader is guaranteed.
     (new Extend\Filesystem())
-        ->disk(Art::DISK, fn (Paths $paths, UrlGenerator $url) => [
+        ->disk('ernestdefoe-sticker-book', fn (Paths $paths, UrlGenerator $url) => [
             'root' => "$paths->public/assets/stickers",
             'url' => $url->to('forum')->path('assets/stickers'),
             'visibility' => 'public',
@@ -113,11 +113,11 @@ return [
         ]),
 
     (new Extend\Settings())
-        ->default(Settings::NAV, true)
-        ->default(Settings::REACTIONS, true)
-        ->default(Settings::GUARANTEE_RARE, true)
-        ->default(Settings::FIRST_POST, true)
-        ->serializeToForum('stickerNav', Settings::NAV, 'boolval'),
+        ->default('ernestdefoe-sticker-book.nav', true)
+        ->default('ernestdefoe-sticker-book.reactions', true)
+        ->default('ernestdefoe-sticker-book.guarantee_rare', true)
+        ->default('ernestdefoe-sticker-book.first_post', true)
+        ->serializeToForum('stickerNav', 'ernestdefoe-sticker-book.nav', 'boolval'),
 
     (new Extend\Event())
         ->listen(Posted::class, [EarnPacks::class, 'posted'])
@@ -126,8 +126,7 @@ return [
     (new Extend\Conditional())
         ->whenExtensionEnabled('flarum-likes', fn () => [
             (new Extend\Event())
-                ->listen(\Flarum\Likes\Event\PostWasLiked::class, fn ($event) => resolve(EarnPacks::class)->liked($event->post, $event->user))
-                ->listen(\Flarum\Likes\Event\PostWasUnliked::class, fn ($event) => resolve(EarnPacks::class)->unliked($event->post, $event->user)),
+                ->listen(\Flarum\Likes\Event\PostWasLiked::class, fn ($event) => resolve(EarnPacks::class)->liked($event->post, $event->user)),
         ])
         ->whenExtensionEnabled('flarum-gdpr', fn () => [
             (new UserData())->addType(StickerData::class),

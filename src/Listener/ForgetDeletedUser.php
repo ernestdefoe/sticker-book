@@ -19,7 +19,7 @@ class ForgetDeletedUser
 
     public function forget(int $id): void
     {
-        foreach (['sticker_owned', 'sticker_collectors', 'sticker_packs', 'sticker_completions', 'sticker_reactions'] as $table) {
+        foreach (['sticker_owned', 'sticker_collectors', 'sticker_packs', 'sticker_completions', 'sticker_reactions', 'sticker_like_credits'] as $table) {
             $this->db->table($table)->where('user_id', $id)->delete();
         }
         $this->db->table('sticker_trades')->where('from_user_id', $id)->orWhere('to_user_id', $id)->delete();

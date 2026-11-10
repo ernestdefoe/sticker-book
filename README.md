@@ -7,11 +7,11 @@ Members collect stickers in an album, a free pack every day, in your Flarum 2 co
 ![Sticker Book](screenshots/reveal.png)
 
 - **A free pack every day.** Members open it with a reveal: the pack shakes and tears open, the stickers land face down and flip when tapped. Rare ones glow through their backs, epics and legendaries shine, a legendary sets off confetti.
-- **Extra packs for taking part.** The first post of the day and every few likes received earn a pack, within a daily cap you choose. An unlike takes its like back, so liking and unliking earns nothing.
+- **Extra packs for taking part.** The first post of the day and every few likes received earn a pack, within a daily cap you choose. Each member's like on a post counts once, so liking and unliking again earns nothing.
 - **Four rarities.** Common, rare, epic and legendary, with odds you set. A pity timer makes a legendary certain after so many packs without one, and every pack can promise at least one rare.
 - **The album.** Every set with its progress, the stickers a member has (with ×N for spares) and silhouettes of the ones they're missing. Filters for missing stickers and spares.
 - **Set badges.** Completing a set is recorded, and with FoF Badges it awards the badge you pick for that set.
-- **Trading.** Offer your spares to another member, optionally asking for some of theirs; they accept or decline, and both hear about it. "Find someone with a spare" lists the members who have one of a sticker you're missing. Your album always keeps one of each.
+- **Trading.** Offer your spares to another member, optionally asking for some of theirs; they accept or decline, and both hear about it. "Find someone with a spare" lists the members who have one of a sticker you're missing. Your album always keeps one of each. New accounts can trade once they are a week old (you choose how long).
 - **Show off.** A member's rarest stickers on their profile card, a Stickers tab with their album, and a Top collectors board.
 - **Stickers on posts.** Put one sticker from your own album on any post.
 - **Starter sets.** Four sets of eight original stickers (woodland friends, space, snacks, forum life) to add with one click, or build your own: upload PNG or WebP art and pick a rarity.

@@ -40,7 +40,7 @@ ernestdefoe-sticker-book:
         spares: Spares
 
     sticker:
-      you_have: "{count, plural, one {You have it} =2 {You have 2 (1 spare)} other {You have # (# spare)}}"
+      you_have: "{count, plural, one {You have it} other {You have # ({spares, plural, one {# spare} other {# spares}})}}"
       they_have: "{name} has {count}"
       you_need: You don't have this one yet.
       they_need: "{name} doesn't have this one yet."
@@ -137,28 +137,6 @@ ernestdefoe-sticker-book:
       declined: "{username} declined your sticker trade"
       failed: "Your sticker trade with {username} couldn't go through: the spares were gone"
 
-    errors:
-      sticker_book_empty: There are no stickers to collect yet.
-      sticker_no_pack: You have no packs to open right now.
-      sticker_slow_down: You're going a little fast. Try again in a minute.
-      sticker_trade_self: You can't trade with yourself.
-      sticker_trade_unavailable: That member can't trade stickers.
-      sticker_trade_empty: Choose at least one of your spares to offer.
-      sticker_trade_same: A sticker can't be on both sides of a trade.
-      sticker_trade_too_many: You have too many offers waiting. Wait for answers or take some back.
-      sticker_trade_no_spares: You don't have those spares anymore.
-      sticker_trade_they_have_no_spares: They don't have those spares anymore.
-      sticker_trade_not_found: That trade isn't available.
-      sticker_trade_closed: That offer has already been answered or has expired.
-      sticker_trade_spares_gone: This trade can't go through because the spares are gone. Nothing was swapped.
-      sticker_trade_invalid: Something about that offer isn't right. Please try again.
-      sticker_not_found: That sticker isn't available.
-      sticker_reactions_off: Stickers on posts are turned off.
-      sticker_post_not_found: That post isn't available.
-      sticker_not_yours: You can only use stickers from your own album.
-      sticker_name_invalid: Give it a name (up to 100 characters).
-      sticker_art_required: Choose an image for the sticker.
-      sticker_user_not_found: There's no member with that username.
 
   admin:
     rarity:
@@ -169,7 +147,7 @@ ernestdefoe-sticker-book:
 
     sets:
       title: Sets and stickers
-      help: Members collect stickers set by set. A hidden set is in no pack and no album, so you can build it first. Use PNG or WebP with a transparent background for the best look; each image is resized and stored as WebP.
+      help: Members collect stickers set by set. A hidden set is in no pack and no album, so you can build it first. Upload PNG, WebP or JPEG art (PNG or WebP with a transparent background looks best); each image is resized and stored as WebP.
       empty: There are no sets yet. Start with the four starter sets (32 original stickers) or make your own.
       add_starter: Add the starter sets
       starter_added: "{count, plural, =0 {The starter sets are already here.} one {Added # starter set, hidden. Show it when you're ready.} other {Added # starter sets, hidden. Show them when you're ready.}}"
@@ -213,13 +191,15 @@ ernestdefoe-sticker-book:
       odds_epic: Epic
       odds_legendary: Legendary
       pity: Legendary guarantee
-      pity_help: After this many packs without a legendary, the next pack has one. 0 turns it off.
+      pity_help: A member's pack is certain to have a legendary when it is this many packs in a row without one (40 means the 40th pack). 0 turns it off.
       guarantee_rare: At least one rare in every pack
       guarantee_rare_help: The last sticker in a pack is rare or better when the rest are all common.
       first_post: An extra pack for a member's first post of the day
       likes_per_pack: Likes received for an extra pack
-      likes_per_pack_help: Needs Likes. An unlike takes its like back. 0 turns it off.
+      likes_per_pack_help: Needs Likes. Each member's like on a post counts once, even if they unlike it and like it again. 0 turns it off.
       extra_cap: Extra packs a day
+      trade_min_age: Minimum account age to trade (days)
+      trade_min_age_help: New accounts can't offer or accept trades until they are this old, so a batch of new accounts can't pass their stickers to one member. 0 turns it off.
       extra_cap_help: The most packs a member can earn in a day from posting and likes, on top of the free daily pack.
 
     permissions:
@@ -229,6 +209,30 @@ ernestdefoe-sticker-book:
       react: Put stickers on posts
 
   lib:
+    errors:
+      sticker_book_empty: There are no stickers to collect yet.
+      sticker_no_pack: You have no packs to open right now.
+      sticker_slow_down: You're going a little fast. Try again in a minute.
+      sticker_trade_self: You can't trade with yourself.
+      sticker_trade_unavailable: That member can't trade stickers.
+      sticker_trade_empty: Choose at least one of your spares to offer.
+      sticker_trade_same: A sticker can't be on both sides of a trade.
+      sticker_trade_too_many: You have too many offers waiting. Wait for answers or take some back.
+      sticker_trade_no_spares: You don't have those spares anymore.
+      sticker_trade_they_have_no_spares: They don't have those spares anymore.
+      sticker_trade_not_found: That trade isn't available.
+      sticker_trade_closed: That offer has already been answered or has expired.
+      sticker_trade_spares_gone: This trade can't go through because the spares are gone. Nothing was swapped.
+      sticker_trade_invalid: Something about that offer isn't right. Please try again.
+      sticker_not_found: That sticker isn't available.
+      sticker_reactions_off: Stickers on posts are turned off.
+      sticker_post_not_found: That post isn't available.
+      sticker_not_yours: You can only use stickers from your own album.
+      sticker_name_invalid: Give it a name (up to 100 characters).
+      sticker_art_required: Choose an image for the sticker.
+      sticker_user_not_found: There's no member with that username.
+      sticker_trade_too_new: Your account is too new to trade stickers yet. Try again in a few days.
+
     gdpr:
       export: Stickers, packs, completed sets, trades and sticker reactions.
       delete: Delete the member's stickers, packs, completed sets, trades and sticker reactions.

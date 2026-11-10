@@ -42,44 +42,46 @@ export default class Album {
           ))}
         </div>
 
-        {album.sets.map((set) => {
-          const have = set.stickers.filter((s) => s.count).length;
-          const shown = set.stickers.filter(keep);
-          if (!shown.length && this.filter !== 'all') return null;
-          const pct = Math.round((have / set.stickers.length) * 100);
+        {/* Sets with nothing to show under a filter are left out before the keyed list is drawn: a null among keyed sections breaks Mithril's redraw. */}
+        {album.sets
+          .map((set) => ({ set, shown: set.stickers.filter(keep) }))
+          .filter(({ shown }) => shown.length || this.filter === 'all')
+          .map(({ set, shown }) => {
+            const have = set.stickers.filter((s) => s.count).length;
+            const pct = Math.round((have / set.stickers.length) * 100);
 
-          return (
-            <section className={`StickerSet ${set.completedAt ? 'is-complete' : ''}`} key={set.id}>
-              <header className="StickerSet-header">
-                <div className="StickerSet-title">
-                  <h3>
-                    {set.name}
-                    {set.completedAt ? (
-                      <span className="StickerSet-done">
-                        <Icon name="fas fa-trophy" /> {t('album.complete')}
-                      </span>
-                    ) : null}
-                  </h3>
-                  {set.description ? <p>{set.description}</p> : null}
+            return (
+              <section className={`StickerSet ${set.completedAt ? 'is-complete' : ''}`} key={set.id}>
+                <header className="StickerSet-header">
+                  <div className="StickerSet-title">
+                    <h3>
+                      {set.name}
+                      {set.completedAt ? (
+                        <span className="StickerSet-done">
+                          <Icon name="fas fa-trophy" /> {t('album.complete')}
+                        </span>
+                      ) : null}
+                    </h3>
+                    {set.description ? <p>{set.description}</p> : null}
+                  </div>
+                  <div className="StickerSet-progress" aria-label={t('album.progress_label', { have, total: set.stickers.length })}>
+                    <span className="StickerSet-count">
+                      {have}
+                      <small>/{set.stickers.length}</small>
+                    </span>
+                    <span className="StickerSet-bar">
+                      <span style={{ width: pct + '%' }} />
+                    </span>
+                  </div>
+                </header>
+                <div className="StickerGrid">
+                  {shown.map((s) => (
+                    <StickerTile sticker={s} onclick={() => openSticker({ sticker: s, album, own })} />
+                  ))}
                 </div>
-                <div className="StickerSet-progress" aria-label={t('album.progress_label', { have, total: set.stickers.length })}>
-                  <span className="StickerSet-count">
-                    {have}
-                    <small>/{set.stickers.length}</small>
-                  </span>
-                  <span className="StickerSet-bar">
-                    <span style={{ width: pct + '%' }} />
-                  </span>
-                </div>
-              </header>
-              <div className="StickerGrid">
-                {shown.map((s) => (
-                  <StickerTile sticker={s} onclick={() => openSticker({ sticker: s, album, own })} />
-                ))}
-              </div>
-            </section>
-          );
-        })}
+              </section>
+            );
+          })}
       </div>
     );
   }

@@ -6,7 +6,7 @@ import extractText from 'flarum/common/utils/extractText';
 
 const t = (key, params = {}) => app.translator.trans(`ernestdefoe-sticker-book.admin.sets.${key}`, params);
 const RARITIES = ['common', 'rare', 'epic', 'legendary'];
-const rarity = (r) => app.translator.trans(`ernestdefoe-sticker-book.forum.rarity.${RARITIES[r]}`);
+const rarity = (r) => app.translator.trans(`ernestdefoe-sticker-book.admin.rarity.${RARITIES[r]}`);
 
 function api(method, path, body, raw = false) {
   return app.request({

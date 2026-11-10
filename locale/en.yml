@@ -161,6 +161,12 @@ ernestdefoe-sticker-book:
       sticker_user_not_found: There's no member with that username.
 
   admin:
+    rarity:
+      common: => ernestdefoe-sticker-book.forum.rarity.common
+      rare: => ernestdefoe-sticker-book.forum.rarity.rare
+      epic: => ernestdefoe-sticker-book.forum.rarity.epic
+      legendary: => ernestdefoe-sticker-book.forum.rarity.legendary
+
     sets:
       title: Sets and stickers
       help: Members collect stickers set by set. A hidden set is in no pack and no album, so you can build it first. Use PNG or WebP with a transparent background for the best look; each image is resized and stored as WebP.

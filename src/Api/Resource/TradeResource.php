@@ -4,6 +4,7 @@ namespace ErnestDefoe\StickerBook\Api\Resource;
 
 use ErnestDefoe\StickerBook\Api\Throttle;
 use ErnestDefoe\StickerBook\Catalog;
+use ErnestDefoe\StickerBook\Limits;
 use ErnestDefoe\StickerBook\Settings;
 use ErnestDefoe\StickerBook\Trade;
 use ErnestDefoe\StickerBook\Trades;
@@ -88,12 +89,14 @@ class TradeResource extends AbstractDatabaseResource
         return [
             Schema\Str::make('status')
                 ->get(fn (Trade $trade) => $trade->effectiveStatus()),
-            // [[sticker id, copies], …]: what the sender gives and asks for. Trades::offer checks them.
+            // [[sticker id, copies], …]: what the sender gives and asks for. Trades::offer checks each item.
             Schema\Arr::make('give')
                 ->writableOnCreate()
-                ->requiredOnCreate(),
+                ->requiredOnCreate()
+                ->rule('max:'.Limits::TRADE_ITEMS),
             Schema\Arr::make('take')
-                ->writableOnCreate(),
+                ->writableOnCreate()
+                ->rule('max:'.Limits::TRADE_ITEMS),
             Schema\Str::make('message')
                 ->nullable()
                 ->writableOnCreate()

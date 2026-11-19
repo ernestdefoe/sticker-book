@@ -5,35 +5,37 @@ import Avatar from 'flarum/common/components/Avatar';
 import Link from 'flarum/common/components/Link';
 import LoadingIndicator from 'flarum/common/components/LoadingIndicator';
 import username from 'flarum/common/helpers/username';
-import { call, pushUsers, t, user } from '../util';
-import type { BoardData } from '../types';
+import { errorText, quietError, t } from '../util';
+import type Collector from '../../common/models/Collector';
 
 const MEDALS = ['🥇', '🥈', '🥉'];
 
 /** The members with the most different stickers. */
 export default class Board extends Component {
-  data: BoardData | null = null;
+  collectors: Collector[] | null = null;
+  /** Why the board couldn't be loaded, shown in its place. */
+  error: string | null = null;
 
   oninit(vnode: Mithril.Vnode<ComponentAttrs, this>) {
     super.oninit(vnode);
-    call<BoardData>('GET', '/board', undefined, { quiet: true })
-      .then((data) => {
-        pushUsers(data.users);
-        this.data = data;
-      })
-      .catch(() => (this.data = { board: [], total: 0 }))
+    app.store
+      .find<Collector[]>('sticker-book-collectors', {}, undefined, { background: true, errorHandler: quietError })
+      .then((collectors) => (this.collectors = collectors))
+      .catch((error) => (this.error = errorText(error)))
       .finally(() => m.redraw());
   }
 
   view() {
-    if (!this.data) return <LoadingIndicator display="block" />;
-    const { board, total } = this.data;
-    if (!board.length) return <p className="StickerTrades-empty">{t('board.empty')}</p>;
+    if (this.error) return <p className="StickerTrades-empty">{this.error}</p>;
+    if (!this.collectors) return <LoadingIndicator display="block" />;
+    if (!this.collectors.length) return <p className="StickerTrades-empty">{t('board.empty')}</p>;
 
     return (
       <ol className="StickerBoard">
-        {board.map(([id, unique], i) => {
-          const u = user(id);
+        {this.collectors.map((row, i) => {
+          const u = row.user();
+          const unique = row.uniqueCount();
+          const total = row.total();
           return (
             <li className="StickerBoard-row">
               <span className="StickerBoard-rank">{MEDALS[i] || i + 1}</span>

@@ -7,7 +7,7 @@ import LoadingIndicator from 'flarum/common/components/LoadingIndicator';
 import extractText from 'flarum/common/utils/extractText';
 import type Mithril from 'mithril';
 import type User from 'flarum/common/models/User';
-import { alertError, call, rarityName, t } from '../util';
+import { alertError, call, errorText, rarityName, t } from '../util';
 import type { AlbumData, AlbumSticker, TradeItem } from '../types';
 import type Trade from '../../common/models/Trade';
 
@@ -35,8 +35,9 @@ export default class TradeModal extends Modal<TradeModalAttrs> {
   give!: Map<number, number>;
   take!: Map<number, number>;
   message!: string;
-  mine!: AlbumData | null;
-  theirs!: AlbumData | null;
+  /** Each side's album: null while it loads, the reason (text) if it couldn't be. */
+  mine!: AlbumData | string | null;
+  theirs!: AlbumData | string | null;
   query!: string;
   results!: User[];
   timer?: ReturnType<typeof setTimeout>;
@@ -65,8 +66,11 @@ export default class TradeModal extends Modal<TradeModalAttrs> {
     return t('trade.title');
   }
 
-  album(slug: string | undefined) {
-    return call<AlbumData>('GET', '/album', { user: slug }).finally(() => m.redraw());
+  /** A member's album, or the reason it couldn't be loaded (shown on that side of the form). */
+  album(slug: string | undefined): Promise<AlbumData | string> {
+    return call<AlbumData>('GET', '/album', { user: slug }, { quiet: true })
+      .catch((error) => errorText(error))
+      .finally(() => m.redraw());
   }
 
   loadTheirs() {
@@ -198,12 +202,12 @@ export default class TradeModal extends Modal<TradeModalAttrs> {
   }
 
   /** One side: that member's spares, tap to add, − / + for how many. */
-  side(title: Mithril.Children, album: AlbumData | null, chosen: Map<number, number>, other: Map<number, number>, mine: boolean) {
-    if (!album) {
+  side(title: Mithril.Children, album: AlbumData | string | null, chosen: Map<number, number>, other: Map<number, number>, mine: boolean) {
+    if (!album || typeof album === 'string') {
       return (
         <div className="StickerTrade-side">
           <h4>{title}</h4>
-          <LoadingIndicator size="small" />
+          {album ? <p className="StickerTrade-hint">{album}</p> : <LoadingIndicator size="small" />}
         </div>
       );
     }

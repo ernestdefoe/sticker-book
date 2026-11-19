@@ -9,7 +9,7 @@ import humanTime from 'flarum/common/helpers/humanTime';
 import username from 'flarum/common/helpers/username';
 import type Mithril from 'mithril';
 import type { ApiPayloadSingle } from 'flarum/common/Store';
-import { quietError, rarityName, request, t } from '../util';
+import { errorText, quietError, rarityName, request, t } from '../util';
 import type { Card, TradeItem } from '../types';
 import type Trade from '../../common/models/Trade';
 import { openTrade } from './TradeModal';
@@ -19,6 +19,8 @@ type Action = 'accept' | 'decline' | 'cancel';
 /** The member's trades: offers to answer, offers they made, and what happened to recent ones. */
 export default class TradeList extends Component {
   trades: Trade[] | null = null;
+  /** Why the trades couldn't be loaded, shown in their place. */
+  error: string | null = null;
   busy: string | null = null;
   onChange!: () => void;
 
@@ -36,12 +38,13 @@ export default class TradeList extends Component {
   load() {
     app.store
       .find<Trade[]>('sticker-book-trades', {}, undefined, { background: true, errorHandler: quietError })
-      .then((trades) => (this.trades = trades))
-      .catch(() => (this.trades = this.trades || []))
+      .then((trades) => ((this.trades = trades), (this.error = null)))
+      .catch((error) => (this.error = errorText(error)))
       .finally(() => m.redraw());
   }
 
   view() {
+    if (this.error) return <p className="StickerTrades-empty">{this.error}</p>;
     if (!this.trades) return <LoadingIndicator display="block" />;
     const me = app.session.user!.id();
     const trades = this.trades;

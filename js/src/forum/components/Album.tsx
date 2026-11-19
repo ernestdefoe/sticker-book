@@ -1,12 +1,15 @@
 import app from 'flarum/forum/app';
 import Component, { type ComponentAttrs } from 'flarum/common/Component';
 import Icon from 'flarum/common/components/Icon';
+import type User from 'flarum/common/models/User';
 import { rarityName, t } from '../util';
 import type { AlbumData, AlbumSet, AlbumSticker } from '../types';
 import { openSticker } from './StickerModal';
 
 export interface AlbumAttrs extends ComponentAttrs {
   album: AlbumData;
+  /** Whose album it is. */
+  owner: User;
   own?: boolean;
 }
 
@@ -60,7 +63,7 @@ export default class Album extends Component<AlbumAttrs> {
 
   /** One set: its title and progress, and the stickers the filter shows. */
   set(set: AlbumSet, shown: AlbumSticker[]) {
-    const { album, own } = this.attrs;
+    const { album, owner, own } = this.attrs;
     const have = set.stickers.filter((s) => s.count).length;
     const pct = Math.round((have / set.stickers.length) * 100);
 
@@ -90,7 +93,7 @@ export default class Album extends Component<AlbumAttrs> {
         </header>
         <div className="StickerGrid">
           {shown.map((s) => (
-            <StickerTile sticker={s} onclick={() => openSticker({ sticker: s, album, own })} />
+            <StickerTile sticker={s} onclick={() => openSticker({ sticker: s, owner, own })} />
           ))}
         </div>
       </section>
@@ -128,4 +131,4 @@ export class StickerTile extends Component<StickerTileAttrs> {
   }
 }
 
-export const isOwnAlbum = (album: AlbumData | null) => !!(app.session.user && album?.user && String(album.user.id) === app.session.user.id());
+export const isOwnAlbum = (owner: User) => !!app.session.user && owner.id() === app.session.user.id();

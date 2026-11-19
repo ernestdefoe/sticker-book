@@ -1,27 +1,12 @@
 import app from 'flarum/forum/app';
-import type User from 'flarum/common/models/User';
-import type { PackStatus, Rarity, UserRow } from './types';
+import { rarityLabel } from '../common/rarity';
+import type { PackStatus, Rarity } from './types';
 
 export { alertError, call, errorText, quietError, request } from '../common/api';
 
 export const t = (key: string, params: Record<string, unknown> = {}) => app.translator.trans(`ernestdefoe-sticker-book.forum.${key}`, params);
 
-export const RARITIES = ['common', 'rare', 'epic', 'legendary'];
-export const rarityName = (r: Rarity) => t(`rarity.${RARITIES[r] || 'common'}`);
-
-/** People arrive as compact rows; the store lets Avatar and username() draw them the usual way. */
-export function pushUsers(users: UserRow[] = []) {
-  for (const user of users) {
-    if (app.store.getById('users', String(user.id))) continue;
-    app.store.pushObject({
-      type: 'users',
-      id: String(user.id),
-      attributes: { username: user.username, displayName: user.displayName, slug: user.slug, avatarUrl: user.avatarUrl },
-    });
-  }
-}
-
-export const user = (id: number | null | undefined): User | null => (id ? app.store.getById<User>('users', String(id)) || null : null);
+export const rarityName = (r: Rarity) => rarityLabel('forum', r);
 
 /** The member's pack status, as forum.js knows it (the button in the header). */
 export const status = (): PackStatus | undefined => app.forum?.attribute<PackStatus | undefined>('stickerStatus');

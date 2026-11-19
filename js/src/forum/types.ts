@@ -2,15 +2,6 @@ import type { Card, Rarity } from '../common/types';
 
 export type { Card, Rarity, TradeItem } from '../common/types';
 
-/** A member as our endpoints send them: one compact row each. */
-export interface UserRow {
-  id: number;
-  username: string;
-  displayName: string;
-  slug: string;
-  avatarUrl: string | null;
-}
-
 /** A sticker in an album: the art when the member has it, the silhouette when not. */
 export interface AlbumSticker {
   id: number;
@@ -38,8 +29,6 @@ export interface AlbumStats {
 }
 
 export interface AlbumData {
-  /** Null only in the empty album shown when one can't be loaded. */
-  user: UserRow | null;
   sets: AlbumSet[];
   stats: Partial<AlbumStats>;
 }
@@ -67,19 +56,6 @@ export interface OpenResult {
   source: string;
   completed: { id: number; name: string }[];
   status: PackStatus;
-}
-
-export interface BoardData {
-  /** [user id, different stickers] */
-  board: [number, number][];
-  total: number;
-  users?: UserRow[];
-}
-
-export interface SparesData {
-  /** [user id, spares] */
-  spares: [number, number][];
-  users: UserRow[];
 }
 
 /** A sticker on a post, with how many put it there and whether the viewer did. */

@@ -8,7 +8,7 @@ import LoadingIndicator from 'flarum/common/components/LoadingIndicator';
 import extractText from 'flarum/common/utils/extractText';
 import type Mithril from 'mithril';
 import useStyles from '../styles';
-import { call, logIn, rarityName, status, t, until } from '../util';
+import { call, errorText, logIn, rarityName, status, t, until } from '../util';
 import type { AlbumData, MeData, PackStatus } from '../types';
 import { openPacks } from './Reveal';
 import Album from './Album';
@@ -21,6 +21,8 @@ const TABS = ['album', 'trades', 'board'];
 export default class BookPage extends Page {
   tab!: string;
   album!: AlbumData | null;
+  /** Why the album couldn't be loaded, shown in its place. */
+  albumError!: string | null;
   me!: MeData | null;
   onChange!: () => void;
   clock!: ReturnType<typeof setInterval>;
@@ -35,6 +37,7 @@ export default class BookPage extends Page {
     const tab = m.route.param('tab');
     this.tab = TABS.includes(tab) ? tab : app.session.user ? 'album' : 'board';
     this.album = null;
+    this.albumError = null;
     this.me = null;
     this.load();
     this.onChange = () => this.load();
@@ -51,11 +54,9 @@ export default class BookPage extends Page {
   load() {
     const me = app.session.user;
     if (!me) return;
-    call<AlbumData>('GET', '/album', { user: me.slug() })
-      .then((album) => (this.album = album))
-      .catch(() => {
-        /* call() already showed the error */
-      })
+    call<AlbumData>('GET', '/album', { user: me.slug() }, { quiet: true })
+      .then((album) => ((this.album = album), (this.albumError = null)))
+      .catch((error) => (this.albumError = errorText(error)))
       .finally(() => m.redraw());
     if (status()) {
       call<MeData>('GET', '/me')
@@ -112,8 +113,9 @@ export default class BookPage extends Page {
       );
     }
     if (this.tab === 'trades') return <TradeList />;
+    if (this.albumError) return <p className="StickerTrades-empty">{this.albumError}</p>;
     if (!this.album) return <LoadingIndicator display="block" />;
-    return <Album album={this.album} own />;
+    return <Album album={this.album} owner={app.session.user} own />;
   }
 
   hero() {

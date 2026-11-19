@@ -5,13 +5,15 @@ import Avatar from 'flarum/common/components/Avatar';
 import username from 'flarum/common/helpers/username';
 import type Mithril from 'mithril';
 import type User from 'flarum/common/models/User';
-import { call, pushUsers, rarityName, t, user } from '../util';
-import type { AlbumData, AlbumSticker, SparesData } from '../types';
+import { alertError, rarityName, t } from '../util';
+import type { AlbumSticker } from '../types';
+import type Spare from '../../common/models/Spare';
 import { openTrade, type TradeAttrs } from './TradeModal';
 
 export type StickerAttrs = {
   sticker: AlbumSticker;
-  album: AlbumData;
+  /** Whose album the sticker is in. */
+  owner: User;
   own?: boolean;
 };
 
@@ -26,14 +28,12 @@ export function openSticker(attrs: StickerAttrs) {
  * have one to spare. On someone else's: ask them for their spare.
  */
 export default class StickerModal extends Modal<StickerModalAttrs> {
-  /** [user id, spares] of members with one to spare, once looked up. */
-  spares!: [number, number][] | null;
+  /** Members with one to spare, once looked up. */
+  spares!: Spare[] | null;
 
   oninit(vnode: Mithril.Vnode<StickerModalAttrs, this>) {
     super.oninit(vnode);
     this.spares = null;
-    // The album's owner as a store user, for the trade form.
-    if (this.attrs.album.user) pushUsers([this.attrs.album.user]);
   }
 
   className() {
@@ -45,10 +45,9 @@ export default class StickerModal extends Modal<StickerModalAttrs> {
   }
 
   content() {
-    const { sticker: s, album, own } = this.attrs;
+    const { sticker: s, owner, own } = this.attrs;
     const me = app.session.user;
     const canTrade = me && app.forum.attribute('stickerCanTrade');
-    const owner = album.user ? user(album.user.id) : null;
 
     return (
       <div className="Modal-body">
@@ -61,10 +60,10 @@ export default class StickerModal extends Modal<StickerModalAttrs> {
             {s.count
               ? own
                 ? t('sticker.you_have', { count: s.count, spares: s.count - 1 })
-                : t('sticker.they_have', { name: owner?.displayName(), count: s.count })
+                : t('sticker.they_have', { name: owner.displayName(), count: s.count })
               : own
                 ? t('sticker.you_need')
-                : t('sticker.they_need', { name: owner?.displayName() })}
+                : t('sticker.they_need', { name: owner.displayName() })}
           </span>
         </p>
 
@@ -73,7 +72,7 @@ export default class StickerModal extends Modal<StickerModalAttrs> {
     );
   }
 
-  actions(s: AlbumSticker, own: boolean, owner: User | null) {
+  actions(s: AlbumSticker, own: boolean, owner: User) {
     if (own && s.count > 1) {
       return (
         <Button className="Button Button--primary Button--block" icon="fas fa-right-left" onclick={() => this.trade({ give: [[s.id, 1]] })}>
@@ -81,7 +80,7 @@ export default class StickerModal extends Modal<StickerModalAttrs> {
         </Button>
       );
     }
-    if (!own && s.count > 1 && owner) {
+    if (!own && s.count > 1) {
       return (
         <Button
           className="Button Button--primary Button--block"
@@ -110,8 +109,9 @@ export default class StickerModal extends Modal<StickerModalAttrs> {
       <div className="StickerSpares">
         <h4>{t('sticker.spares_title')}</h4>
         <ul>
-          {this.spares.map(([id, n]) => {
-            const u = user(id);
+          {this.spares.map((spare) => {
+            const u = spare.user();
+            const n = spare.spares();
             if (!u) return null;
             return (
               <li>
@@ -131,13 +131,11 @@ export default class StickerModal extends Modal<StickerModalAttrs> {
 
   findSpares(s: AlbumSticker) {
     this.loading = true;
-    call<SparesData>('GET', '/spares', { sticker: s.id })
-      .then((data) => {
-        pushUsers(data.users);
-        this.spares = data.spares;
-      })
+    app.store
+      .find<Spare[]>('sticker-book-spares', { filter: { sticker: String(s.id) } }, undefined, { errorHandler: alertError })
+      .then((spares) => (this.spares = spares))
       .catch(() => {
-        /* call() already showed the error */
+        /* alertError already showed the error */
       })
       .finally(() => {
         this.loading = false;

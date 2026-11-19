@@ -8,13 +8,13 @@ import extractText from 'flarum/common/utils/extractText';
 import isExtensionEnabled from 'flarum/admin/utils/isExtensionEnabled';
 import type { ApiPayloadSingle } from 'flarum/common/Store';
 import type Mithril from 'mithril';
-import { alertError, call, request } from '../common/api';
+import { alertError, call, errorText, request } from '../common/api';
+import { RARITIES, rarityLabel } from '../common/rarity';
 import type StickerSet from '../common/models/StickerSet';
 import type Sticker from '../common/models/Sticker';
 
 const t = (key: string, params: Record<string, unknown> = {}) => app.translator.trans(`ernestdefoe-sticker-book.admin.sets.${key}`, params);
-const RARITIES = ['common', 'rare', 'epic', 'legendary'];
-const rarity = (r: number) => app.translator.trans(`ernestdefoe-sticker-book.admin.rarity.${RARITIES[r]}`);
+const rarity = (r: number) => rarityLabel('admin', r);
 const value = (e: Event) => (e.target as HTMLInputElement).value;
 
 interface Badge {
@@ -36,12 +36,12 @@ interface StickerForm {
   preview?: string | null;
 }
 
-/** FoF Badges' badges, for the badge a completed set awards (none without FoF Badges, or if they can't be had). */
+/** FoF Badges' badges, for the badge a completed set awards (none without FoF Badges; a failure alerts and rejects). */
 function loadBadges(): Promise<Badge[]> {
   if (!isExtensionEnabled('fof-badges')) return Promise.resolve([]);
-  return request<{ data: { id: string; attributes: { name: string } }[] }>('GET', '/badges', undefined, { quiet: true })
-    .then((payload) => payload.data.map((b) => ({ id: Number(b.id), name: b.attributes.name })))
-    .catch(() => []);
+  return request<{ data: { id: string; attributes: { name: string } }[] }>('GET', '/badges').then((payload) =>
+    payload.data.map((b) => ({ id: Number(b.id), name: b.attributes.name }))
+  );
 }
 
 /** Sends a sticker's art (multipart: JSON:API carries no files) and puts the sticker as it is now in the store. */
@@ -61,6 +61,8 @@ function uploadArt(sticker: Sticker, file: File) {
 export default class SetsEditor extends Component {
   sets: StickerSet[] | null = null;
   badges: Badge[] = [];
+  /** Why FoF Badges' badges couldn't be loaded, shown in the set form in place of the picker. */
+  badgesError: string | null = null;
   /** 'set:new', 'set:<id>', 'sticker:<setId>:new', 'sticker:<id>' */
   editing: string | null = null;
   form: Partial<SetForm & StickerForm> = {};
@@ -70,10 +72,10 @@ export default class SetsEditor extends Component {
   oninit(vnode: Mithril.Vnode<ComponentAttrs, this>) {
     super.oninit(vnode);
     this.load();
-    loadBadges().then((badges) => {
-      this.badges = badges;
-      m.redraw();
-    });
+    loadBadges()
+      .then((badges) => (this.badges = badges))
+      .catch((error) => (this.badgesError = errorText(error)))
+      .finally(() => m.redraw());
   }
 
   load() {
@@ -272,7 +274,7 @@ export default class SetsEditor extends Component {
           value={f.description}
           oninput={(e: InputEvent) => (f.description = value(e))}
         />
-        {badges.length ? null : <p className="helpText">{t('badges_help')}</p>}
+        {badges.length ? null : <p className="helpText">{this.badgesError || t('badges_help')}</p>}
         <Switch state={!f.hidden} onchange={(on: boolean) => (f.hidden = !on)}>
           {t('visible')}
         </Switch>

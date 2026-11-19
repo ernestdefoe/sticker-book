@@ -22,7 +22,7 @@ class OpenController extends Endpoint
     {
         $actor->assertRegistered();
         $actor->assertCan(Settings::COLLECT);
-        $this->throttle->spend($actor, 'open', 20, 400);
+        $this->throttle->spend($actor, 'open');
 
         $result = $this->packs->open($actor);
         $sets = array_values(array_filter($this->catalog->all()['sets'], fn ($set) => in_array($set['id'], $result['completed'], true)));

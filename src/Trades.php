@@ -21,18 +21,6 @@ use Flarum\User\User;
  */
 class Trades
 {
-    /** Different stickers per side. */
-    public const MAX_ITEMS = 8;
-
-    /** Copies of one sticker in one offer. */
-    public const MAX_COPIES = 20;
-
-    /** Offers a member can have waiting at once. */
-    public const MAX_PENDING = 10;
-
-    /** Offers waiting from one member to the same member. */
-    public const MAX_PENDING_TO_ONE = 3;
-
     public function __construct(
         private readonly Catalog $catalog,
         private readonly Collection $collection,
@@ -78,8 +66,8 @@ class Trades
         }
 
         $pending = Trade::query()->where('from_user_id', $from->id)->where('status', Trade::PENDING)
-            ->where('created_at', '>=', Carbon::now()->subDays(Trade::LIFETIME_DAYS))->pluck('to_user_id');
-        if ($pending->count() >= self::MAX_PENDING || $pending->filter(fn ($id) => (int) $id === $to->id)->count() >= self::MAX_PENDING_TO_ONE) {
+            ->where('created_at', '>=', Carbon::now()->subDays(Limits::TRADE_LIFETIME_DAYS))->pluck('to_user_id');
+        if ($pending->count() >= Limits::TRADE_PENDING || $pending->filter(fn ($id) => (int) $id === $to->id)->count() >= Limits::TRADE_PENDING_TO_ONE) {
             throw new StickerException('sticker_trade_too_many');
         }
 
@@ -137,7 +125,7 @@ class Trades
     private function swap(Trade $trade): array
     {
         $moved = Trade::query()->whereKey($trade->id)->where('status', Trade::PENDING)
-            ->where('created_at', '>=', Carbon::now()->subDays(Trade::LIFETIME_DAYS))
+            ->where('created_at', '>=', Carbon::now()->subDays(Limits::TRADE_LIFETIME_DAYS))
             ->update(['status' => Trade::ACCEPTED, 'decided_at' => Carbon::now()]);
         if ($moved !== 1) {
             throw new StickerException('sticker_trade_closed');
@@ -223,7 +211,7 @@ class Trades
         if ($raw === null || $raw === []) {
             return [];
         }
-        if (! is_array($raw) || count($raw) > self::MAX_ITEMS) {
+        if (! is_array($raw) || count($raw) > Limits::TRADE_ITEMS) {
             throw new StickerException('sticker_trade_invalid');
         }
 
@@ -240,7 +228,7 @@ class Trades
             }
             $id = (int) $id;
             $n = (int) $n;
-            if (! isset($live[$id]) || $n < 1 || $n > self::MAX_COPIES || isset($items[$id])) {
+            if (! isset($live[$id]) || $n < 1 || $n > Limits::TRADE_COPIES || isset($items[$id])) {
                 throw new StickerException('sticker_trade_invalid');
             }
             $items[$id] = [$id, $n];

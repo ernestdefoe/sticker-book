@@ -4,7 +4,7 @@ namespace ErnestDefoe\StickerBook\Exception;
 
 use RuntimeException;
 
-/** A refusal with a code the browser turns into a sentence (Api\Errors). */
+/** A refusal: Api\StickerErrorHandler sends its code, which the browser shows as lib.errors.<code>. */
 class StickerException extends RuntimeException
 {
     public function __construct(public readonly string $errorCode, public readonly int $status = 422)

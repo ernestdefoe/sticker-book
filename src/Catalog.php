@@ -62,7 +62,7 @@ class Catalog
         return $out;
     }
 
-    /** @return array<string, mixed> A sticker as anyone may see it once they have it. */
+    /** @return array<string, mixed>|null A sticker as anyone may see it once they have it; null when it is not in a live set. */
     public function card(int $id): ?array
     {
         $s = $this->sticker($id);

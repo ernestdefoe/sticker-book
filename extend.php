@@ -27,8 +27,10 @@ use ErnestDefoe\StickerBook\Exception\StickerException;
 use ErnestDefoe\StickerBook\Gdpr\StickerData;
 use ErnestDefoe\StickerBook\Http\PageContent;
 use ErnestDefoe\StickerBook\Listener\EarnPacks;
-use ErnestDefoe\StickerBook\Listener\ForgetDeletedUser;
 use ErnestDefoe\StickerBook\Notification\TradeBlueprint;
+use ErnestDefoe\StickerBook\OwnedSticker;
+use ErnestDefoe\StickerBook\Search;
+use ErnestDefoe\StickerBook\StickerBookServiceProvider;
 use Flarum\Api\Resource\ForumResource;
 use Flarum\Api\Resource\PostResource;
 use Flarum\Api\Resource\UserResource;
@@ -37,7 +39,7 @@ use Flarum\Foundation\Paths;
 use Flarum\Gdpr\Extend\UserData;
 use Flarum\Http\UrlGenerator;
 use Flarum\Post\Event\Posted;
-use Flarum\User\Event\Deleted;
+use Flarum\Search\Database\DatabaseSearchDriver;
 
 return [
     (new Extend\Frontend('forum'))
@@ -54,6 +56,9 @@ return [
 
     new Extend\Locales(__DIR__.'/locale'),
 
+    (new Extend\ServiceProvider())
+        ->register(StickerBookServiceProvider::class),
+
     // 🚨 String literals, not our own class constants: extend.php is read before our autoloader is guaranteed.
     (new Extend\Filesystem())
         ->disk('ernestdefoe-sticker-book', fn (Paths $paths, UrlGenerator $url) => [
@@ -67,18 +72,23 @@ return [
         ->post('/sticker-book/open', 'sticker-book.open', Api\OpenController::class)
         ->get('/sticker-book/album', 'sticker-book.album', Api\AlbumController::class)
         ->get('/sticker-book/mine', 'sticker-book.mine', Api\MineController::class)
-        ->get('/sticker-book/board', 'sticker-book.board', Api\BoardController::class)
-        ->get('/sticker-book/spares', 'sticker-book.spares', Api\SparesController::class)
         ->post('/sticker-book/react', 'sticker-book.react', Api\ReactController::class)
         ->post('/sticker-book/gift', 'sticker-book.gift', Admin\GiftController::class)
         ->post('/sticker-book/starter', 'sticker-book.starter', Admin\StarterController::class),
 
-    // Members' pack, album, board and reactions are custom endpoints: actions and read models
-    // shaped per viewer (silhouettes for what they don't have), not records. The admin's sets and
-    // stickers and members' trades are JSON:API resources.
+    // Opening a pack, reacting, gifts and the starter sets are actions; the album, the pack status
+    // and the reaction picker are read models shaped per viewer (silhouettes for what they don't
+    // have): custom endpoints. Sets, stickers, trades, the collectors board and who has a spare
+    // are JSON:API resources.
     new Extend\ApiResource(Api\Resource\StickerSetResource::class),
     new Extend\ApiResource(Api\Resource\StickerResource::class),
     new Extend\ApiResource(Api\Resource\TradeResource::class),
+    new Extend\ApiResource(Api\Resource\CollectorResource::class),
+    new Extend\ApiResource(Api\Resource\SpareResource::class),
+
+    (new Extend\SearchDriver(DatabaseSearchDriver::class))
+        ->addSearcher(OwnedSticker::class, Search\SpareSearcher::class)
+        ->addFilter(Search\SpareSearcher::class, Search\StickerFilter::class),
 
     (new Extend\ErrorHandling())
         ->handler(StickerException::class, Api\StickerErrorHandler::class),
@@ -115,8 +125,7 @@ return [
         ->serializeToForum('stickerNav', 'ernestdefoe-sticker-book.nav', 'boolval'),
 
     (new Extend\Event())
-        ->listen(Posted::class, [EarnPacks::class, 'posted'])
-        ->listen(Deleted::class, ForgetDeletedUser::class),
+        ->listen(Posted::class, [EarnPacks::class, 'posted']),
 
     (new Extend\Conditional())
         ->whenExtensionEnabled('flarum-likes', fn () => [

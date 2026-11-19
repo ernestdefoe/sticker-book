@@ -19,23 +19,23 @@ class Reactions
     public const SHOWN = 12;
 
     /** @var WeakMap<ServerRequestInterface, array{queued: array<int, true>, rows: array<int, list<array<string, mixed>>>}> */
-    private static WeakMap $byRequest;
+    private WeakMap $byRequest;
 
     public function __construct(private readonly ConnectionInterface $db, private readonly Catalog $catalog)
     {
-        self::$byRequest ??= new WeakMap();
+        $this->byRequest = new WeakMap();
     }
 
     public function deferred(Context $context, int $postId): \Closure
     {
-        $state = self::$byRequest[$context->request] ?? ['queued' => [], 'rows' => []];
+        $state = $this->byRequest[$context->request] ?? ['queued' => [], 'rows' => []];
         if (! array_key_exists($postId, $state['rows'])) {
             $state['queued'][$postId] = true;
         }
-        self::$byRequest[$context->request] = $state;
+        $this->byRequest[$context->request] = $state;
 
         return function () use ($context, $postId) {
-            $state = self::$byRequest[$context->request];
+            $state = $this->byRequest[$context->request];
             if ($state['queued']) {
                 $ids = array_keys($state['queued']);
                 $loaded = $this->load($ids, (int) $context->getActor()->id);
@@ -43,7 +43,7 @@ class Reactions
                     $state['rows'][$id] = $loaded[$id] ?? [];
                 }
                 $state['queued'] = [];
-                self::$byRequest[$context->request] = $state;
+                $this->byRequest[$context->request] = $state;
             }
 
             return $state['rows'][$postId] ?: null;

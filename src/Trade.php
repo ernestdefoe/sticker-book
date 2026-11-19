@@ -29,9 +29,6 @@ class Trade extends AbstractModel
     public const FAILED = 'failed';
     public const EXPIRED = 'expired';
 
-    /** A pending offer older than this has expired. */
-    public const LIFETIME_DAYS = 14;
-
     protected $table = 'sticker_trades';
 
     public $timestamps = false;
@@ -53,7 +50,7 @@ class Trade extends AbstractModel
 
     public function isExpired(): bool
     {
-        return $this->created_at->lt(Carbon::now()->subDays(self::LIFETIME_DAYS));
+        return $this->created_at->lt(Carbon::now()->subDays(Limits::TRADE_LIFETIME_DAYS));
     }
 
     /** @return BelongsTo<User, $this> */

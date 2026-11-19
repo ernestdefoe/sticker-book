@@ -7,8 +7,9 @@ use Illuminate\Database\Schema\Blueprint;
  * A trade offer: `give` (spares from the sender) for `take` (spares from the
  * recipient), each a JSON list of [sticker id, count]. Nothing is held while
  * it is pending; accepting re-checks both sides inside one transaction.
- * status: pending, accepted, declined, cancelled, failed (a side no longer
- * had the spares) or expired.
+ * status: pending, accepted, declined, cancelled or failed (a side no longer
+ * had the spares). "Expired" is never stored: a pending offer past its
+ * lifetime reads as expired (Trade::effectiveStatus).
  */
 return Migration::createTable('sticker_trades', function (Blueprint $table) {
     $table->increments('id');

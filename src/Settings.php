@@ -30,9 +30,6 @@ final class Settings
     /** The shipped odds, in percent (one legendary in about 67 stickers before pity): what an all-zero setup rolls with. */
     public const DEFAULT_ODDS = ['common' => 70, 'rare' => 22, 'epic' => 6.5, 'legendary' => 1.5];
 
-    /** Unopened packs a member can hold; earning stops at this many. */
-    public const MAX_UNOPENED = 30;
-
     public function __construct(private readonly SettingsRepositoryInterface $settings)
     {
     }

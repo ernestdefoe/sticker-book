@@ -44,7 +44,7 @@ class ReactController extends Endpoint
             throw new StickerException('sticker_post_not_found', 404);
         }
 
-        $this->throttle->spend($actor, 'react', 30, 500);
+        $this->throttle->spend($actor, 'react');
         $sticker = $body['sticker'] ?? null;
 
         if ($sticker === null) {

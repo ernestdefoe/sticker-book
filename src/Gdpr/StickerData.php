@@ -2,7 +2,6 @@
 
 namespace ErnestDefoe\StickerBook\Gdpr;
 
-use ErnestDefoe\StickerBook\Listener\ForgetDeletedUser;
 use Flarum\Gdpr\Data\Type;
 
 /** A member's export: their stickers, packs, sets completed, trades and reactions. Erasing removes them all. */
@@ -45,9 +44,18 @@ class StickerData extends Type
         $this->delete();
     }
 
+    /**
+     * Every sticker row of the member. (Deleting an account needs none of this:
+     * the foreign keys remove the rows with the user.) flarum/gdpr builds data
+     * types with `new` and fixed arguments, so the user's own connection serves.
+     */
     public function delete(): void
     {
-        // flarum/gdpr builds data types with `new` and fixed arguments, so nothing can be injected: the user's own connection serves.
-        (new ForgetDeletedUser($this->user->getConnection()))->forget((int) $this->user->id);
+        $db = $this->user->getConnection();
+        $id = $this->user->id;
+        foreach (['sticker_owned', 'sticker_collectors', 'sticker_packs', 'sticker_completions', 'sticker_reactions', 'sticker_like_credits'] as $table) {
+            $db->table($table)->where('user_id', $id)->delete();
+        }
+        $db->table('sticker_trades')->where('from_user_id', $id)->orWhere('to_user_id', $id)->delete();
     }
 }

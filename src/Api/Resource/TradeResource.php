@@ -52,7 +52,7 @@ class TradeResource extends AbstractDatabaseResource
     {
         $actor = $context->getActor();
         if ($actor->isGuest()) {
-            $query->whereRaw('1 = 0');
+            $query->whereKey([]);
 
             return;
         }
@@ -71,6 +71,7 @@ class TradeResource extends AbstractDatabaseResource
                 ->paginate(50, 50),
             Endpoint\Show::make()
                 ->authenticated()
+                ->can(Settings::TRADE)
                 ->defaultInclude(['from', 'to']),
             Endpoint\Create::make()
                 ->authenticated()
@@ -126,7 +127,7 @@ class TradeResource extends AbstractDatabaseResource
     {
         /** @var Trade $model */
         $actor = $context->getActor();
-        $this->throttle->spend($actor, 'offer', 6, 60);
+        $this->throttle->spend($actor, 'offer');
 
         return $this->trades->offer($actor, $model->to, $model->give, $model->take ?? [], $model->message);
     }
@@ -141,7 +142,7 @@ class TradeResource extends AbstractDatabaseResource
             ->defaultInclude(['from', 'to'])
             ->action(function (Context $context) use ($run) {
                 $actor = $context->getActor();
-                $this->throttle->spend($actor, 'trade-action', 20, 300);
+                $this->throttle->spend($actor, 'trade-action');
 
                 /** @var Trade $trade */
                 $trade = $context->model;

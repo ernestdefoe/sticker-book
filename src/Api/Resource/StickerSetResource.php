@@ -4,7 +4,6 @@ namespace ErnestDefoe\StickerBook\Api\Resource;
 
 use ErnestDefoe\StickerBook\Catalog;
 use ErnestDefoe\StickerBook\Removal;
-use ErnestDefoe\StickerBook\Sticker;
 use ErnestDefoe\StickerBook\StickerSet;
 use Flarum\Api\Context;
 use Flarum\Api\Endpoint;
@@ -51,14 +50,12 @@ class StickerSetResource extends AbstractDatabaseResource
             Endpoint\Create::make()->admin(),
             Endpoint\Update::make()->admin(),
             Endpoint\Delete::make()->admin(),
-            // {"sets": [3, 1, 2]} or {"set": 3, "stickers": [9, 7, 8]}: a new order, in one UPDATE.
+            // {"sets": [3, 1, 2]}: the sets in their new order, in one UPDATE.
             Endpoint\Endpoint::make('sticker-book.order')
                 ->route('POST', '/order')
                 ->admin()
                 ->action(function (Context $context) {
-                    $body = $context->body();
-                    $this->reorder(StickerSet::query(), (array) ($body['sets'] ?? []));
-                    $this->reorder(Sticker::query()->where('set_id', (int) ($body['set'] ?? 0)), (array) ($body['stickers'] ?? []));
+                    $this->reorder((array) ($context->body()['sets'] ?? []));
                     $this->catalog->forget();
 
                     return [];
@@ -124,10 +121,9 @@ class StickerSetResource extends AbstractDatabaseResource
      * Positions 0, 1, 2… in the order given, as one CASE UPDATE. The ids are
      * cast to integers, so nothing from the request reaches the SQL as text.
      *
-     * @param \Illuminate\Database\Eloquent\Builder<StickerSet>|\Illuminate\Database\Eloquent\Builder<Sticker> $query
      * @param array<mixed> $ids
      */
-    private function reorder($query, array $ids): void
+    private function reorder(array $ids): void
     {
         $ids = array_values(array_unique(array_map('intval', $ids)));
         if (! $ids) {
@@ -136,6 +132,6 @@ class StickerSetResource extends AbstractDatabaseResource
 
         $id = $this->db->getQueryGrammar()->wrap('id');
         $cases = implode(' ', array_map(fn (int $key, int $i) => "WHEN $key THEN $i", $ids, array_keys($ids)));
-        $query->whereKey($ids)->update(['position' => $this->db->raw("CASE $id $cases END")]);
+        StickerSet::query()->whereKey($ids)->update(['position' => $this->db->raw("CASE $id $cases END")]);
     }
 }

@@ -89,7 +89,7 @@ class Packs
 
     private function earnLocked(int $userId, string $source, int $cap): bool
     {
-        if ($this->packs()->where('user_id', $userId)->whereNull('opened_at')->count() >= Settings::MAX_UNOPENED) {
+        if ($this->packs()->where('user_id', $userId)->whereNull('opened_at')->count() >= Limits::UNOPENED_PACKS) {
             return false;
         }
 

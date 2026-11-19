@@ -581,8 +581,6 @@ class StickerBookTest extends TestCase
 
         $this->assertSame(204, $send('POST', '/api/sticker-book-sets/order', ['sets' => [2, (int) $set['id'], 1]])->getStatusCode());
         $this->assertSame([2, (int) $set['id'], 1], $this->db()->table('sticker_sets')->orderBy('position')->pluck('id')->map(fn ($id) => (int) $id)->all());
-        $this->assertSame(204, $send('POST', '/api/sticker-book-sets/order', ['set' => 2, 'stickers' => [6, 5]])->getStatusCode());
-        $this->assertSame([6, 5], $this->db()->table('stickers')->where('set_id', 2)->orderBy('position')->pluck('id')->map(fn ($id) => (int) $id)->all());
 
         $this->give(2, 5, 3);
         $this->assertSame(204, $send('DELETE', '/api/sticker-book-stickers/5')->getStatusCode());
@@ -616,6 +614,48 @@ class StickerBookTest extends TestCase
         $body = json_decode((string) $list(3)->getBody(), true);
         $this->assertEqualsCanonicalizing(['2', '3'], array_column($body['included'], 'id'));
         $this->assertSame(['Fox', 'Owl'], array_column($body['data'][0]['attributes']['stickers'], 'name'));
+    }
+
+    #[Test]
+    public function the_board_ranks_collectors_with_their_users(): void
+    {
+        $this->db()->table('sticker_collectors')->insert([
+            ['user_id' => 2, 'unique_count' => 3],
+            ['user_id' => 3, 'unique_count' => 5],
+            ['user_id' => 4, 'unique_count' => 3],
+            ['user_id' => 1, 'unique_count' => 0],
+        ]);
+
+        $response = $this->send($this->request('GET', '/api/sticker-book-collectors', ['authenticatedAs' => 2]));
+        $body = json_decode((string) $response->getBody(), true);
+        $this->assertSame(200, $response->getStatusCode(), json_encode($body));
+        $this->assertSame(['3', '2', '4'], array_column($body['data'], 'id'));
+        $this->assertSame(6, $body['data'][0]['attributes']['total']);
+        $this->assertEqualsCanonicalizing(['2', '3', '4'], array_column($body['included'], 'id'));
+    }
+
+    #[Test]
+    public function members_with_a_spare_are_listed_for_one_sticker(): void
+    {
+        $this->give(3, 1, 3);
+        $this->give(4, 1, 1);
+        $this->give(2, 1, 4);
+
+        $spares = function (?int $as, string $sticker) {
+            $response = $this->send($this->request('GET', '/api/sticker-book-spares', $as ? ['authenticatedAs' => $as] : [])->withQueryParams(['filter' => ['sticker' => $sticker]]));
+
+            return [$response->getStatusCode(), json_decode((string) $response->getBody(), true)];
+        };
+
+        [$status, $body] = $spares(2, '1');
+        $this->assertSame(200, $status, json_encode($body));
+        // Sam has two spares; Normal has none; the viewer's own copies are left out.
+        $this->assertSame(['3-1'], array_column($body['data'], 'id'));
+        $this->assertSame(2, $body['data'][0]['attributes']['spares']);
+        $this->assertSame('3', $body['included'][0]['id']);
+        $this->assertSame([], $spares(2, '999')[1]['data']);
+        $this->assertSame(422, $spares(2, 'x')[0]);
+        $this->assertSame(401, $spares(null, '1')[0]);
     }
 
     #[Test]

@@ -14,8 +14,9 @@ export class TradeNotification extends Notification {
 
   content() {
     const notification = this.attrs.notification;
-    const kind = notification.content()?.kind || 'offered';
-    return t(`notification.${kind}`, { username: notification.fromUser()?.displayName() });
+    const kind = notification.content<{ kind?: string } | null>()?.kind || 'offered';
+    const from = notification.fromUser();
+    return t(`notification.${kind}`, { username: from ? from.displayName() : undefined });
   }
 
   excerpt() {

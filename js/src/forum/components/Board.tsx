@@ -1,17 +1,22 @@
 import app from 'flarum/forum/app';
+import Component, { type ComponentAttrs } from 'flarum/common/Component';
+import type Mithril from 'mithril';
 import Avatar from 'flarum/common/components/Avatar';
 import Link from 'flarum/common/components/Link';
 import LoadingIndicator from 'flarum/common/components/LoadingIndicator';
 import username from 'flarum/common/helpers/username';
 import { call, pushUsers, t, user } from '../util';
+import type { BoardData } from '../types';
 
 const MEDALS = ['🥇', '🥈', '🥉'];
 
 /** The members with the most different stickers. */
-export default class Board {
-  oninit() {
-    this.data = null;
-    call('GET', '/board', undefined, true)
+export default class Board extends Component {
+  data: BoardData | null = null;
+
+  oninit(vnode: Mithril.Vnode<ComponentAttrs, this>) {
+    super.oninit(vnode);
+    call<BoardData>('GET', '/board', undefined, { quiet: true })
       .then((data) => {
         pushUsers(data.users);
         this.data = data;

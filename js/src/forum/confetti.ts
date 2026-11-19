@@ -3,7 +3,7 @@ import { reducedMotion } from './util';
 const COLORS = ['#f43f5e', '#f59e0b', '#10b981', '#3b82f6', '#a855f7', '#ec4899', '#facc15'];
 
 /** A burst of paper from an element: pure CSS, gone after two seconds. Skipped for readers who ask for less motion. */
-export default function confetti(from, pieces = 56) {
+export default function confetti(from: Element | null, pieces = 56) {
   if (reducedMotion()) return;
   const box = from?.getBoundingClientRect();
   const x = box ? box.left + box.width / 2 : window.innerWidth / 2;

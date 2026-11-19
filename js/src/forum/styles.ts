@@ -1,11 +1,11 @@
-let loading = null;
+let loading: Promise<void> | null = null;
 
 /**
  * Sticker Book's page styles: a chunk of their own, fetched once beside the first
  * Sticker Book page or window that opens (the routes load both at once, so nothing
  * shows unstyled), and never part of forum.css.
  */
-export function loadStyles() {
+export function loadStyles(): Promise<void> {
   return (loading ??= import('./generated/pagesCss').then(({ default: css }) => {
     if (document.getElementById('sticker-book-styles')) return;
     const style = document.createElement('style');

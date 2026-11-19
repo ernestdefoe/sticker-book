@@ -1,13 +1,15 @@
 import app from 'flarum/forum/app';
-import Page from 'flarum/common/components/Page';
+import Page, { type IPageAttrs } from 'flarum/common/components/Page';
 import PageStructure from 'flarum/forum/components/PageStructure';
 import IndexSidebar from 'flarum/forum/components/IndexSidebar';
 import Button from 'flarum/common/components/Button';
 import Icon from 'flarum/common/components/Icon';
 import LoadingIndicator from 'flarum/common/components/LoadingIndicator';
 import extractText from 'flarum/common/utils/extractText';
+import type Mithril from 'mithril';
 import useStyles from '../styles';
-import { call, logIn, rarityName, refreshStatus, status, t, until } from '../util';
+import { call, logIn, rarityName, status, t, until } from '../util';
+import type { AlbumData, MeData, PackStatus } from '../types';
 import { openPacks } from './Reveal';
 import Album from './Album';
 import TradeList from './TradeList';
@@ -17,14 +19,21 @@ const TABS = ['album', 'trades', 'board'];
 
 /** /stickers: the member's album, their packs, their trades and the top collectors. */
 export default class BookPage extends Page {
-  oninit(vnode) {
+  tab!: string;
+  album!: AlbumData | null;
+  me!: MeData | null;
+  onChange!: () => void;
+  clock!: ReturnType<typeof setInterval>;
+
+  oninit(vnode: Mithril.Vnode<IPageAttrs, this>) {
     super.oninit(vnode);
     useStyles();
     app.history.push('stickers', extractText(t('page.title')));
     app.setTitle(extractText(t('page.title')));
     app.setTitleCount(0);
 
-    this.tab = TABS.includes(m.route.param('tab')) ? m.route.param('tab') : app.session.user ? 'album' : 'board';
+    const tab = m.route.param('tab');
+    this.tab = TABS.includes(tab) ? tab : app.session.user ? 'album' : 'board';
     this.album = null;
     this.me = null;
     this.load();
@@ -33,7 +42,7 @@ export default class BookPage extends Page {
     this.clock = setInterval(() => m.redraw(), 60000);
   }
 
-  onremove(vnode) {
+  onremove(vnode: Mithril.VnodeDOM<IPageAttrs, this>) {
     super.onremove(vnode);
     window.removeEventListener('sticker-book:changed', this.onChange);
     clearInterval(this.clock);
@@ -42,17 +51,21 @@ export default class BookPage extends Page {
   load() {
     const me = app.session.user;
     if (!me) return;
-    call('GET', '/album', { user: me.slug() }, true)
+    call<AlbumData>('GET', '/album', { user: me.slug() })
       .then((album) => (this.album = album))
-      .catch(() => {})
+      .catch(() => {
+        /* call() already showed the error */
+      })
       .finally(() => m.redraw());
     if (status()) {
-      call('GET', '/me', undefined, true)
+      call<MeData>('GET', '/me')
         .then((s) => {
           this.me = s;
           app.forum.pushAttributes({ stickerStatus: { ...status(), ...s } });
         })
-        .catch(() => {})
+        .catch(() => {
+          /* call() already showed the error */
+        })
         .finally(() => m.redraw());
     }
   }
@@ -68,7 +81,7 @@ export default class BookPage extends Page {
               aria-selected={this.tab === tab ? 'true' : 'false'}
               onclick={() => this.setTab(tab)}
             >
-              <Icon name={{ album: 'fas fa-book-open', trades: 'fas fa-right-left', board: 'fas fa-ranking-star' }[tab]} />
+              <Icon name={{ album: 'fas fa-book-open', trades: 'fas fa-right-left', board: 'fas fa-ranking-star' }[tab] || ''} />
               <span>{t(`page.tab.${tab}`)}</span>
             </button>
           ))}
@@ -78,7 +91,7 @@ export default class BookPage extends Page {
     );
   }
 
-  setTab(tab) {
+  setTab(tab: string) {
     this.tab = tab;
     // Keep the tab in the address (a refresh or a shared link lands on it), without a new history entry.
     const url = app.route('stickers') + (tab === 'album' ? '' : `?tab=${tab}`);
@@ -104,10 +117,9 @@ export default class BookPage extends Page {
   }
 
   hero() {
-    const album = this.album;
+    const stats = this.album?.stats;
+    const pct = stats?.total ? Math.round(((stats.unique || 0) / stats.total) * 100) : 0;
     const s = this.me || status();
-    const stats = album?.stats;
-    const pct = stats?.total ? Math.round((stats.unique / stats.total) * 100) : 0;
 
     return (
       <header className="StickerHero">
@@ -127,24 +139,7 @@ export default class BookPage extends Page {
             </div>
             <div className="StickerHero-text">
               <h1>{t('page.title')}</h1>
-              {stats ? (
-                <ul className="StickerHero-stats">
-                  <li>
-                    <strong>
-                      {stats.unique}/{stats.total}
-                    </strong>{' '}
-                    {t('hero.stickers')}
-                  </li>
-                  <li>
-                    <strong>{stats.completed}</strong> {t('hero.sets', { count: stats.completed })}
-                  </li>
-                  <li>
-                    <strong>{stats.opened}</strong> {t('hero.packs', { count: stats.opened })}
-                  </li>
-                </ul>
-              ) : (
-                <p>{t('hero.intro')}</p>
-              )}
+              {stats ? this.stats(stats) : <p>{t('hero.intro')}</p>}
             </div>
           </div>
           {s ? this.shelf(s) : null}
@@ -153,8 +148,26 @@ export default class BookPage extends Page {
     );
   }
 
-  shelf(s) {
-    const odds = this.me?.odds;
+  stats(stats: AlbumData['stats']) {
+    return (
+      <ul className="StickerHero-stats">
+        <li>
+          <strong>
+            {stats.unique}/{stats.total}
+          </strong>{' '}
+          {t('hero.stickers')}
+        </li>
+        <li>
+          <strong>{stats.completed}</strong> {t('hero.sets', { count: stats.completed })}
+        </li>
+        <li>
+          <strong>{stats.opened}</strong> {t('hero.packs', { count: stats.opened })}
+        </li>
+      </ul>
+    );
+  }
+
+  shelf(s: PackStatus) {
     return (
       <div className="StickerShelf">
         {s.packs ? (
@@ -179,21 +192,25 @@ export default class BookPage extends Page {
             </span>
           </div>
         )}
-        {odds ? (
-          <details className="StickerOdds">
-            <summary>{t('hero.odds')}</summary>
-            <ul>
-              {Object.entries(odds).map(([name, pct], r) => (
-                <li className={`StickerOdds-row StickerPill--r${r}`}>
-                  <span>{rarityName(r)}</span>
-                  <strong>{pct}%</strong>
-                </li>
-              ))}
-            </ul>
-            {this.me.pityLeft ? <p>{t('hero.pity', { count: this.me.pityLeft })}</p> : null}
-          </details>
-        ) : null}
+        {this.me?.odds ? this.odds(this.me) : null}
       </div>
+    );
+  }
+
+  odds(me: MeData) {
+    return (
+      <details className="StickerOdds">
+        <summary>{t('hero.odds')}</summary>
+        <ul>
+          {Object.entries(me.odds).map(([, pct], r) => (
+            <li className={`StickerOdds-row StickerPill--r${r}`}>
+              <span>{rarityName(r)}</span>
+              <strong>{pct}%</strong>
+            </li>
+          ))}
+        </ul>
+        {me.pityLeft ? <p>{t('hero.pity', { count: me.pityLeft })}</p> : null}
+      </details>
     );
   }
 }

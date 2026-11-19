@@ -1,7 +1,10 @@
 import app from 'flarum/forum/app';
 import Button from 'flarum/common/components/Button';
 import Icon from 'flarum/common/components/Icon';
+import Component, { type ComponentAttrs } from 'flarum/common/Component';
+import type Mithril from 'mithril';
 import { call, errorText, rarityName, reducedMotion, setStatus, status, t, until } from '../util';
+import type { OpenResult, PackStatus } from '../types';
 import confetti from '../confetti';
 import { loadStyles } from '../styles';
 
@@ -13,7 +16,7 @@ import { loadStyles } from '../styles';
  */
 export function openPacks() {
   if (document.querySelector('.StickerReveal')) return;
-  const last = document.activeElement;
+  const last = document.activeElement as HTMLElement | null;
   const host = document.createElement('div');
   document.body.appendChild(host);
   document.body.classList.add('StickerReveal-open');
@@ -28,7 +31,7 @@ export function openPacks() {
     window.dispatchEvent(new CustomEvent('sticker-book:changed'));
     m.redraw();
   };
-  const onKey = (e) => {
+  const onKey = (e: KeyboardEvent) => {
     if (e.key === 'Escape') close();
   };
   document.addEventListener('keydown', onKey);
@@ -36,10 +39,10 @@ export function openPacks() {
   loadStyles().then(() => m.mount(host, { view: () => <Reveal close={close} /> }));
 }
 
-const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /** Wait for the art (up to a second and a half), so a card never flips to an empty face. */
-function preload(cards) {
+function preload(cards: OpenResult['cards']) {
   const loads = cards.map(
     (card) =>
       new Promise((resolve) => {
@@ -51,8 +54,23 @@ function preload(cards) {
   return Promise.race([Promise.all(loads), wait(1500)]);
 }
 
-class Reveal {
-  oninit(vnode) {
+interface RevealAttrs extends ComponentAttrs {
+  close: () => void;
+}
+
+type Stage = 'pack' | 'opening' | 'cards';
+
+class Reveal extends Component<RevealAttrs> {
+  close!: () => void;
+  stage!: Stage;
+  result!: OpenResult | null;
+  flipped!: boolean[];
+  daily!: boolean;
+  torn?: boolean;
+  error?: string | null;
+
+  oninit(vnode: Mithril.Vnode<RevealAttrs, this>) {
+    super.oninit(vnode);
     this.close = vnode.attrs.close;
     this.stage = 'pack'; // pack → opening → cards
     this.result = null;
@@ -60,12 +78,13 @@ class Reveal {
     this.daily = !!status()?.daily;
   }
 
-  oncreate(vnode) {
-    vnode.dom.querySelector('.StickerPack')?.focus();
+  oncreate(vnode: Mithril.VnodeDOM<RevealAttrs, this>) {
+    super.oncreate(vnode);
+    vnode.dom.querySelector<HTMLElement>('.StickerPack')?.focus();
   }
 
   view() {
-    const s = status() || {};
+    const s: Partial<PackStatus> = status() || {};
     return (
       <div className={`StickerReveal StickerReveal--${this.stage}`} role="dialog" aria-modal="true" aria-label={t('reveal.label')}>
         <div className="StickerReveal-backdrop" onclick={() => this.stage !== 'opening' && this.close()} />
@@ -77,7 +96,7 @@ class Reveal {
     );
   }
 
-  pack(s) {
+  pack(s: Partial<PackStatus>) {
     const left = s.packs || 0;
     if (!left && this.stage === 'pack') {
       return (
@@ -88,7 +107,7 @@ class Reveal {
             </span>
           </div>
           <h2>{t('reveal.none_title')}</h2>
-          <p>{t('reveal.none_text', { time: until(s.nextDaily) })}</p>
+          <p>{t('reveal.none_text', { time: until(s.nextDaily || '') })}</p>
           <Button className="Button Button--primary" onclick={() => this.toAlbum()}>
             {t('reveal.see_album')}
           </Button>
@@ -124,45 +143,13 @@ class Reveal {
   }
 
   cards() {
-    const { cards, completed } = this.result;
+    const { cards, completed } = this.result!;
     const done = this.flipped.every(Boolean);
-    const left = status()?.packs || 0;
-    const fresh = cards.filter((c) => c.new).length;
 
     return (
       <div className="StickerReveal-cardsView">
         <div className="StickerReveal-cards" style={{ '--n': cards.length }}>
-          {cards.map((card, i) => (
-            <button
-              key={i}
-              className={`StickerCard StickerCard--r${card.rarity} ${this.flipped[i] ? 'is-flipped' : ''}`}
-              style={{ '--i': i }}
-              onclick={(e) => this.flip(i, e.currentTarget)}
-              aria-label={this.flipped[i] ? `${card.name}, ${rarityName(card.rarity)}` : t('reveal.flip')}
-              aria-pressed={this.flipped[i] ? 'true' : 'false'}
-            >
-              <span className="StickerCard-inner">
-                <span className="StickerCard-back">
-                  <span className="StickerCard-backMark">
-                    <Icon name="fas fa-star" />
-                  </span>
-                </span>
-                <span className="StickerCard-front">
-                  <span className="StickerCard-art">
-                    <img src={card.full} alt="" draggable="false" />
-                  </span>
-                  <span className="StickerCard-name">{card.name}</span>
-                  <span className="StickerCard-rarity">{rarityName(card.rarity)}</span>
-                  {card.new ? (
-                    <span className="StickerCard-new">{t('reveal.new')}</span>
-                  ) : card.count > 1 ? (
-                    <span className="StickerCard-dupe">×{card.count}</span>
-                  ) : null}
-                  {card.rarity >= 2 ? <span className="StickerCard-holo" /> : null}
-                </span>
-              </span>
-            </button>
-          ))}
+          {cards.map((card, i) => this.card(card, i))}
         </div>
 
         {done && completed.length ? (
@@ -177,23 +164,66 @@ class Reveal {
               {t('reveal.flip_all')}
             </Button>
           ) : (
-            [
-              <p className="StickerReveal-summary">{fresh ? t('reveal.summary_new', { count: fresh }) : t('reveal.summary_none')}</p>,
-              <div className="StickerReveal-buttons">
-                {left ? (
-                  <Button className="Button Button--primary" icon="fas fa-box-open" onclick={() => this.again()}>
-                    {t('reveal.next', { count: left })}
-                  </Button>
-                ) : null}
-                <Button className={left ? 'Button' : 'Button Button--primary'} icon="fas fa-book-open" onclick={() => this.toAlbum()}>
-                  {t('reveal.see_album')}
-                </Button>
-              </div>,
-            ]
+            this.after(cards)
           )}
         </div>
       </div>
     );
+  }
+
+  /** One card: face down until tapped, then its art, name and rarity (new, or how many now). */
+  card(card: OpenResult['cards'][number], i: number) {
+    return (
+      <button
+        key={i}
+        className={`StickerCard StickerCard--r${card.rarity} ${this.flipped[i] ? 'is-flipped' : ''}`}
+        style={{ '--i': i }}
+        onclick={(e: MouseEvent) => this.flip(i, e.currentTarget as Element)}
+        aria-label={this.flipped[i] ? `${card.name}, ${rarityName(card.rarity)}` : t('reveal.flip')}
+        aria-pressed={this.flipped[i] ? 'true' : 'false'}
+      >
+        <span className="StickerCard-inner">
+          <span className="StickerCard-back">
+            <span className="StickerCard-backMark">
+              <Icon name="fas fa-star" />
+            </span>
+          </span>
+          <span className="StickerCard-front">
+            <span className="StickerCard-art">
+              <img src={card.full} alt="" draggable="false" />
+            </span>
+            <span className="StickerCard-name">{card.name}</span>
+            <span className="StickerCard-rarity">{rarityName(card.rarity)}</span>
+            {card.new ? (
+              <span className="StickerCard-new">{t('reveal.new')}</span>
+            ) : card.count > 1 ? (
+              <span className="StickerCard-dupe">×{card.count}</span>
+            ) : null}
+            {card.rarity >= 2 ? <span className="StickerCard-holo" /> : null}
+          </span>
+        </span>
+      </button>
+    );
+  }
+
+  /** Once every card is turned: how many were new, and the next pack or the album. */
+  after(cards: OpenResult['cards']) {
+    const left = status()?.packs || 0;
+    const fresh = cards.filter((c) => c.new).length;
+
+    return [
+      <p className="StickerReveal-summary">{fresh ? t('reveal.summary_new', { count: fresh }) : t('reveal.summary_none')}</p>,
+      <div className="StickerReveal-buttons">
+        {left ? (
+          <Button className="Button Button--primary" icon="fas fa-box-open" onclick={() => this.again()}>
+            {t('reveal.next', { count: left })}
+          </Button>
+        ) : null}
+        <Button className={left ? 'Button' : 'Button Button--primary'} icon="fas fa-book-open" onclick={() => this.toAlbum()}>
+          {t('reveal.see_album')}
+        </Button>
+      </div>,
+    ];
   }
 
   async open() {
@@ -202,10 +232,10 @@ class Reveal {
     this.error = null;
     const started = Date.now();
 
-    let result;
+    let result: OpenResult;
     try {
       // Quiet: an alert would sit under the reveal, so the reason shows on the stage.
-      result = await call('POST', '/open', undefined, true);
+      result = await call<OpenResult>('POST', '/open', undefined, { quiet: true });
     } catch (e) {
       this.error = errorText(e);
       this.stage = 'pack';
@@ -226,16 +256,17 @@ class Reveal {
     m.redraw();
   }
 
-  flip(i, el) {
+  flip(i: number, el: Element | null) {
     if (this.flipped[i]) return;
     this.flipped[i] = true;
-    const card = this.result.cards[i];
+    const result = this.result!;
+    const card = result.cards[i];
     if (card.rarity === 3) setTimeout(() => confetti(el, 70), reducedMotion() ? 0 : 350);
-    if (this.flipped.every(Boolean) && this.result.completed.length) setTimeout(() => confetti(null, 90), 700);
+    if (this.flipped.every(Boolean) && result.completed.length) setTimeout(() => confetti(null, 90), 700);
   }
 
   async flipAll() {
-    const buttons = document.querySelectorAll('.StickerReveal .StickerCard');
+    const buttons = document.querySelectorAll<HTMLElement>('.StickerReveal .StickerCard');
     for (let i = 0; i < this.flipped.length; i++) {
       if (this.flipped[i]) continue;
       this.flip(i, buttons[i]);

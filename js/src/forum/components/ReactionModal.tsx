@@ -1,19 +1,31 @@
 import app from 'flarum/forum/app';
-import Modal from 'flarum/common/components/Modal';
+import Modal, { type IInternalModalAttrs } from 'flarum/common/components/Modal';
 import Button from 'flarum/common/components/Button';
 import Link from 'flarum/common/components/Link';
 import LoadingIndicator from 'flarum/common/components/LoadingIndicator';
+import extractText from 'flarum/common/utils/extractText';
+import type Mithril from 'mithril';
+import type Post from 'flarum/common/models/Post';
 import { call, rarityName, t } from '../util';
 import { loadStyles } from '../styles';
+import type { Card, Reaction } from '../types';
+
+export interface ReactionModalAttrs extends IInternalModalAttrs {
+  post: Post;
+}
 
 /** Pick one of your own stickers to put on a post (or take yours off). */
-export default class ReactionModal extends Modal {
-  oninit(vnode) {
+export default class ReactionModal extends Modal<ReactionModalAttrs> {
+  stickers!: Card[] | null;
+  filter!: string;
+  saving?: boolean;
+
+  oninit(vnode: Mithril.Vnode<ReactionModalAttrs, this>) {
     super.oninit(vnode);
     loadStyles();
     this.stickers = null;
     this.filter = '';
-    call('GET', '/mine')
+    call<{ stickers: Card[] }>('GET', '/mine')
       .then((data) => (this.stickers = data.stickers))
       .catch(() => (this.stickers = []))
       .finally(() => m.redraw());
@@ -28,8 +40,6 @@ export default class ReactionModal extends Modal {
   }
 
   content() {
-    const post = this.attrs.post;
-    const mine = (post.attribute('stickerReactions') || []).find((r) => r.mine);
     if (!this.stickers)
       return (
         <div className="Modal-body">
@@ -48,17 +58,23 @@ export default class ReactionModal extends Modal {
       );
     }
 
+    return this.picker(this.stickers);
+  }
+
+  /** The member's stickers to pick from, filtered by name once there are many. */
+  picker(stickers: Card[]) {
+    const mine = (this.attrs.post.attribute<Reaction[] | null>('stickerReactions') || []).find((r) => r.mine);
     const q = this.filter.trim().toLowerCase();
-    const shown = q ? this.stickers.filter((s) => s.name.toLowerCase().includes(q)) : this.stickers;
+    const shown = q ? stickers.filter((s) => s.name.toLowerCase().includes(q)) : stickers;
 
     return (
       <div className="Modal-body">
-        {this.stickers.length > 12 ? (
+        {stickers.length > 12 ? (
           <input
             className="FormControl StickerReact-filter"
-            placeholder={t('react.filter')}
+            placeholder={extractText(t('react.filter'))}
             value={this.filter}
-            oninput={(e) => (this.filter = e.target.value)}
+            oninput={(e: InputEvent) => (this.filter = (e.target as HTMLInputElement).value)}
           />
         ) : null}
         <div className="StickerReact-grid">
@@ -82,17 +98,19 @@ export default class ReactionModal extends Modal {
     );
   }
 
-  react(sticker) {
+  react(sticker: number | null) {
     this.saving = true;
     react(this.attrs.post, sticker)
       .then(() => this.hide())
-      .catch(() => {})
+      .catch(() => {
+        /* call() already showed the error */
+      })
       .finally(() => (this.saving = false));
   }
 }
 
-export function react(post, sticker) {
-  return call('POST', '/react', { post: post.id(), sticker }).then((data) => {
+export function react(post: Post, sticker: number | null) {
+  return call<{ reactions: Reaction[] }>('POST', '/react', { post: post.id(), sticker }).then((data) => {
     post.pushAttributes({ stickerReactions: data.reactions.length ? data.reactions : null });
     m.redraw();
   });

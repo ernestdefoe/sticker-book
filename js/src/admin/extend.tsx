@@ -2,16 +2,15 @@ import app from 'flarum/admin/app';
 import Extend from 'flarum/common/extenders';
 import SetsEditor from './SetsEditor';
 
-const t = (key, params) => app.translator.trans(`ernestdefoe-sticker-book.admin.${key}`, params);
-const setting = (key) => `ernestdefoe-sticker-book.${key}`;
-const odds = (rarity, priority) => () => ({
+const t = (key: string, params?: Record<string, unknown>) => app.translator.trans(`ernestdefoe-sticker-book.admin.${key}`, params || {});
+const setting = (key: string) => `ernestdefoe-sticker-book.${key}`;
+const odds = (rarity: string) => () => ({
   setting: setting(`odds_${rarity}`),
   type: 'number',
   min: 0,
   max: 100,
   step: 0.1,
   label: t(`settings.odds_${rarity}`),
-  placeholder: { common: '70', rare: '22', epic: '6.5', legendary: '1.5' }[rarity],
 });
 
 export default [
@@ -19,7 +18,7 @@ export default [
     .customSetting(() => <SetsEditor />, 300)
     .setting(() => ({ setting: setting('nav'), type: 'boolean', label: t('settings.nav') }), 200)
     .setting(() => ({ setting: setting('reactions'), type: 'boolean', label: t('settings.reactions'), help: t('settings.reactions_help') }), 190)
-    .setting(() => ({ setting: setting('pack_size'), type: 'number', min: 1, max: 10, label: t('settings.pack_size'), placeholder: '5' }), 180)
+    .setting(() => ({ setting: setting('pack_size'), type: 'number', min: 1, max: 10, label: t('settings.pack_size') }), 180)
     .customSetting(
       () => (
         <div className="Form-group">
@@ -41,7 +40,6 @@ export default [
         max: 1000,
         label: t('settings.pity'),
         help: t('settings.pity_help'),
-        placeholder: '40',
       }),
       160
     )
@@ -57,7 +55,6 @@ export default [
         min: 0,
         label: t('settings.likes_per_pack'),
         help: t('settings.likes_per_pack_help'),
-        placeholder: '5',
       }),
       130
     )
@@ -69,7 +66,6 @@ export default [
         max: 20,
         label: t('settings.extra_cap'),
         help: t('settings.extra_cap_help'),
-        placeholder: '2',
       }),
       120
     )
@@ -81,7 +77,6 @@ export default [
         max: 365,
         label: t('settings.trade_min_age'),
         help: t('settings.trade_min_age_help'),
-        placeholder: '7',
       }),
       110
     )

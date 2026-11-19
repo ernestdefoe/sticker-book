@@ -1,4 +1,5 @@
 import app from 'flarum/forum/app';
+import Component, { type ComponentAttrs } from 'flarum/common/Component';
 import Button from 'flarum/common/components/Button';
 import Avatar from 'flarum/common/components/Avatar';
 import Icon from 'flarum/common/components/Icon';
@@ -6,14 +7,21 @@ import Link from 'flarum/common/components/Link';
 import LoadingIndicator from 'flarum/common/components/LoadingIndicator';
 import humanTime from 'flarum/common/helpers/humanTime';
 import username from 'flarum/common/helpers/username';
+import type Mithril from 'mithril';
 import { call, pushUsers, rarityName, t, user } from '../util';
+import type { Card, Trade, TradeItem, TradesData } from '../types';
 import { openTrade } from './TradeModal';
 
+type Action = 'accept' | 'decline' | 'cancel';
+
 /** The member's trades: offers to answer, offers they made, and what happened to recent ones. */
-export default class TradeList {
-  oninit() {
-    this.data = null;
-    this.busy = null;
+export default class TradeList extends Component {
+  data: TradesData | null = null;
+  busy: string | null = null;
+  onChange!: () => void;
+
+  oninit(vnode: Mithril.Vnode<ComponentAttrs, this>) {
+    super.oninit(vnode);
     this.load();
     this.onChange = () => this.load();
     window.addEventListener('sticker-book:changed', this.onChange);
@@ -24,18 +32,18 @@ export default class TradeList {
   }
 
   load() {
-    call('GET', '/trades', undefined, true)
+    call<TradesData>('GET', '/trades', undefined, { quiet: true })
       .then((data) => {
         pushUsers(data.users);
         this.data = data;
       })
-      .catch(() => (this.data = this.data || { trades: [], stickers: [] }))
+      .catch(() => (this.data = this.data || { trades: [], stickers: [], users: [] }))
       .finally(() => m.redraw());
   }
 
   view() {
     if (!this.data) return <LoadingIndicator display="block" />;
-    const me = Number(app.session.user.id());
+    const me = Number(app.session.user!.id());
     const trades = this.data.trades;
     const incoming = trades.filter((tr) => tr.status === 'pending' && tr.to === me);
     const outgoing = trades.filter((tr) => tr.status === 'pending' && tr.from === me);
@@ -56,7 +64,7 @@ export default class TradeList {
     );
   }
 
-  section(title, trades, me, empty) {
+  section(title: Mithril.Children, trades: Trade[], me: number, empty?: Mithril.Children) {
     return (
       <section className="StickerTrades-section">
         <h3>
@@ -67,7 +75,7 @@ export default class TradeList {
     );
   }
 
-  row(tr, me) {
+  row(tr: Trade, me: number) {
     const incoming = tr.to === me;
     const other = user(incoming ? tr.from : tr.to);
     // What the viewer gives and gets, whichever side they are on.
@@ -80,7 +88,7 @@ export default class TradeList {
           <Link href={other ? app.route.user(other) : '#'} className="StickerTradeRow-who">
             <Avatar user={other} /> <strong>{username(other)}</strong>
           </Link>
-          <span className="StickerTradeRow-when">{humanTime(tr.createdAt)}</span>
+          <span className="StickerTradeRow-when">{humanTime(new Date(tr.createdAt))}</span>
           {tr.status !== 'pending' ? <span className={`StickerTradeRow-status is-${tr.status}`}>{t(`trades.status.${tr.status}`)}</span> : null}
         </div>
         {tr.message ? <p className="StickerTradeRow-message">“{tr.message}”</p> : null}
@@ -95,36 +103,25 @@ export default class TradeList {
             {this.items(gets)}
           </div>
         </div>
-        {tr.status === 'pending' ? (
-          <div className="StickerTradeRow-actions">
-            {incoming
-              ? [
-                  <Button
-                    className="Button Button--primary"
-                    icon="fas fa-check"
-                    loading={this.busy === `${tr.id}accept`}
-                    onclick={() => this.act(tr, 'accept')}
-                  >
-                    {t('trades.accept')}
-                  </Button>,
-                  <Button className="Button" loading={this.busy === `${tr.id}decline`} onclick={() => this.act(tr, 'decline')}>
-                    {t('trades.decline')}
-                  </Button>,
-                ]
-              : [
-                  <Button className="Button" loading={this.busy === `${tr.id}cancel`} onclick={() => this.act(tr, 'cancel')}>
-                    {t('trades.cancel')}
-                  </Button>,
-                ]}
-          </div>
-        ) : null}
+        {tr.status === 'pending' ? <div className="StickerTradeRow-actions">{this.actions(tr, incoming)}</div> : null}
       </li>
     );
   }
 
-  items(list) {
+  /** Accept or decline an offer to the viewer; cancel one they made. */
+  actions(tr: Trade, incoming: boolean) {
+    const button = (action: Action, className: string, icon?: string) => (
+      <Button className={className} icon={icon} loading={this.busy === `${tr.id}${action}`} onclick={() => this.act(tr, action)}>
+        {t(`trades.${action}`)}
+      </Button>
+    );
+
+    return incoming ? [button('accept', 'Button Button--primary', 'fas fa-check'), button('decline', 'Button')] : [button('cancel', 'Button')];
+  }
+
+  items(list: TradeItem[]) {
     if (!list.length) return <span className="StickerTradeRow-nothing">{t('trades.nothing')}</span>;
-    const byId = Object.fromEntries(this.data.stickers.map((s) => [s.id, s]));
+    const byId: Record<number, Card> = Object.fromEntries(this.data!.stickers.map((s) => [s.id, s]));
     return (
       <span className="StickerTradeRow-stickers">
         {list.map(([id, n]) => {
@@ -141,7 +138,7 @@ export default class TradeList {
     );
   }
 
-  act(tr, action) {
+  act(tr: Trade, action: Action) {
     this.busy = `${tr.id}${action}`;
     call('POST', `/trades/${tr.id}/${action}`)
       .then(() => {

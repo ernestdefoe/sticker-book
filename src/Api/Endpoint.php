@@ -32,11 +32,4 @@ abstract class Endpoint implements RequestHandlerInterface
 
         return is_array($body) ? $body : [];
     }
-
-    protected function limit(User $actor, string $what, int $perMinute, int $perDay): void
-    {
-        if (! RateLimit::spend('ernestdefoe-sticker-book.rate.'.$what.'.'.$actor->id, $perMinute, $perDay)) {
-            throw new StickerException('sticker_slow_down', 429);
-        }
-    }
 }

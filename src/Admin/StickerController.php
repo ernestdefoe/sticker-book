@@ -5,6 +5,7 @@ namespace ErnestDefoe\StickerBook\Admin;
 use ErnestDefoe\StickerBook\Api\Endpoint;
 use ErnestDefoe\StickerBook\Catalog;
 use ErnestDefoe\StickerBook\Exception\StickerException;
+use ErnestDefoe\StickerBook\Removal;
 use ErnestDefoe\StickerBook\Settings;
 use ErnestDefoe\StickerBook\Storage\Art;
 use ErnestDefoe\StickerBook\Storage\ArtValidator;
@@ -13,6 +14,8 @@ use ErnestDefoe\StickerBook\StickerSet;
 use Flarum\User\User;
 use Illuminate\Support\Arr;
 use Psr\Http\Message\ServerRequestInterface;
+use Psr\Http\Message\UploadedFileInterface;
+use Throwable;
 
 /**
  * POST /api/sticker-book/stickers (multipart: set, name, rarity, art) adds a
@@ -22,7 +25,7 @@ use Psr\Http\Message\ServerRequestInterface;
  */
 class StickerController extends Endpoint
 {
-    public function __construct(private readonly Catalog $catalog, private readonly Art $art)
+    public function __construct(private readonly Catalog $catalog, private readonly Art $art, private readonly ArtValidator $validator, private readonly Removal $removal)
     {
     }
 
@@ -37,14 +40,21 @@ class StickerController extends Endpoint
         }
 
         if ($request->getMethod() === 'DELETE') {
-            $this->art->delete($sticker->image);
-            $sticker->delete();
-            $this->catalog->forget();
+            $this->removal->sticker($sticker);
 
             return ['id' => $id];
         }
 
-        $body = $this->body($request);
+        $this->fill($sticker, $this->body($request));
+        $this->saveWithArt($sticker, $request->getUploadedFiles()['art'] ?? null);
+        $this->catalog->forget();
+
+        return ['id' => $sticker->id];
+    }
+
+    /** @param array<string, mixed> $body */
+    private function fill(Sticker $sticker, array $body): void
+    {
         if (! $sticker->exists) {
             $set = StickerSet::query()->find((int) ($body['set'] ?? 0));
             if (! $set) {
@@ -63,20 +73,30 @@ class StickerController extends Endpoint
         if (array_key_exists('rarity', $body)) {
             $sticker->rarity = max(0, min(Settings::LEGENDARY, (int) $body['rarity']));
         }
+    }
 
-        $file = $request->getUploadedFiles()['art'] ?? null;
-        if ($file && $file->getError() !== UPLOAD_ERR_NO_FILE) {
-            resolve(ArtValidator::class)->assertImageValid('art', $file);
-            $old = $sticker->image;
-            $sticker->image = $this->art->store((string) $file->getStream()->getMetadata('uri'));
-            $this->art->delete($old);
-        } elseif (! $sticker->exists) {
-            throw new StickerException('sticker_art_required');
+    /** New art is stored first; the old art goes only once the sticker is saved, the new art if it isn't. */
+    private function saveWithArt(Sticker $sticker, ?UploadedFileInterface $file): void
+    {
+        if (! $file || $file->getError() === UPLOAD_ERR_NO_FILE) {
+            if (! $sticker->exists) {
+                throw new StickerException('sticker_art_required');
+            }
+            $sticker->save();
+
+            return;
         }
 
-        $sticker->save();
-        $this->catalog->forget();
+        $this->validator->assertImageValid('art', $file);
+        $old = $sticker->image;
+        $sticker->image = $this->art->store((string) $file->getStream()->getMetadata('uri'));
+        try {
+            $sticker->save();
+        } catch (Throwable $e) {
+            $this->art->delete($sticker->image);
 
-        return ['id' => $sticker->id];
+            throw $e;
+        }
+        $this->art->delete($old);
     }
 }

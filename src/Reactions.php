@@ -57,14 +57,15 @@ class Reactions
     public function load(array $postIds, int $viewerId): array
     {
         $grammar = $this->db->getQueryGrammar();
-        $mine = $viewerId
-            ? 'MAX(CASE WHEN '.$grammar->wrap('user_id').' = '.$viewerId.' THEN 1 ELSE 0 END)'
-            : '0';
+        // Per post and sticker: how many, and whether the viewer is among them. Grouped
+        // aggregates have no query-builder form; names go through the grammar (prefix-safe)
+        // and the viewer's id is a binding.
+        $mine = 'MAX(CASE WHEN '.$grammar->wrap('user_id').' = ? THEN 1 ELSE 0 END)';
 
         $rows = $this->db->table('sticker_reactions')
             ->whereIn('post_id', $postIds)
             ->groupBy('post_id', 'sticker_id')
-            ->selectRaw($grammar->wrap('post_id').' as post_id, '.$grammar->wrap('sticker_id').' as sticker_id, COUNT(*) as n, '.$mine.' as mine')
+            ->selectRaw($grammar->wrap('post_id').' as post_id, '.$grammar->wrap('sticker_id').' as sticker_id, COUNT(*) as n, '.$mine.' as mine', [$viewerId])
             ->get();
 
         $out = [];

@@ -2,6 +2,7 @@
 
 namespace ErnestDefoe\StickerBook;
 
+use Carbon\Carbon;
 use ErnestDefoe\StickerBook\Storage\Art;
 
 /**
@@ -37,15 +38,21 @@ class Starter
             $set->position = (int) StickerSet::query()->max('position') + 1;
             $set->save();
 
+            // The set's stickers in one insert (the art is stored first, one file each).
+            $now = Carbon::now();
+            $rows = [];
             foreach ($data['stickers'] as $i => $row) {
-                $sticker = new Sticker();
-                $sticker->set_id = $set->id;
-                $sticker->name = $row['name'];
-                $sticker->rarity = self::RARITY[$row['rarity']] ?? 0;
-                $sticker->position = $i;
-                $sticker->image = $this->art->store($dir.'/'.$row['file']);
-                $sticker->save();
+                $rows[] = [
+                    'set_id' => $set->id,
+                    'name' => $row['name'],
+                    'rarity' => self::RARITY[$row['rarity']] ?? 0,
+                    'position' => $i,
+                    'image' => json_encode($this->art->store($dir.'/'.$row['file'])),
+                    'created_at' => $now,
+                    'updated_at' => $now,
+                ];
             }
+            Sticker::query()->insert($rows);
             $added++;
         }
 

@@ -14,7 +14,7 @@ use Psr\Http\Message\ServerRequestInterface;
  */
 class OpenController extends Endpoint
 {
-    public function __construct(private readonly Packs $packs, private readonly Catalog $catalog)
+    public function __construct(private readonly Packs $packs, private readonly Catalog $catalog, private readonly Throttle $throttle)
     {
     }
 
@@ -22,7 +22,7 @@ class OpenController extends Endpoint
     {
         $actor->assertRegistered();
         $actor->assertCan(Settings::COLLECT);
-        $this->limit($actor, 'open', 20, 400);
+        $this->throttle->spend($actor, 'open', 20, 400);
 
         $result = $this->packs->open($actor);
         $sets = array_values(array_filter($this->catalog->all()['sets'], fn ($set) => in_array($set['id'], $result['completed'], true)));

@@ -5,8 +5,7 @@ namespace ErnestDefoe\StickerBook\Admin;
 use ErnestDefoe\StickerBook\Api\Endpoint;
 use ErnestDefoe\StickerBook\Catalog;
 use ErnestDefoe\StickerBook\Exception\StickerException;
-use ErnestDefoe\StickerBook\Storage\Art;
-use ErnestDefoe\StickerBook\Sticker;
+use ErnestDefoe\StickerBook\Removal;
 use ErnestDefoe\StickerBook\StickerSet;
 use Flarum\User\User;
 use Illuminate\Support\Arr;
@@ -19,7 +18,7 @@ use Psr\Http\Message\ServerRequestInterface;
  */
 class SetController extends Endpoint
 {
-    public function __construct(private readonly Catalog $catalog, private readonly Art $art)
+    public function __construct(private readonly Catalog $catalog, private readonly Removal $removal)
     {
     }
 
@@ -34,11 +33,7 @@ class SetController extends Endpoint
         }
 
         if ($request->getMethod() === 'DELETE') {
-            foreach (Sticker::query()->where('set_id', $set->id)->get() as $sticker) {
-                $this->art->delete($sticker->image);
-                $sticker->delete();
-            }
-            $set->delete();
+            $this->removal->set($set);
         } else {
             $body = $this->body($request);
             if (! $set->exists || array_key_exists('name', $body)) {

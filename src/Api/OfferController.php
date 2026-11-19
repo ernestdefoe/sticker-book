@@ -2,7 +2,6 @@
 
 namespace ErnestDefoe\StickerBook\Api;
 
-use ErnestDefoe\StickerBook\Catalog;
 use ErnestDefoe\StickerBook\Exception\StickerException;
 use ErnestDefoe\StickerBook\Settings;
 use ErnestDefoe\StickerBook\Trades;
@@ -12,7 +11,7 @@ use Psr\Http\Message\ServerRequestInterface;
 /** POST /api/sticker-book/trades {to, give: [[id, n]], take: [[id, n]], message}: offer spares to another member. */
 class OfferController extends Endpoint
 {
-    public function __construct(private readonly Trades $trades, private readonly Catalog $catalog)
+    public function __construct(private readonly Trades $trades, private readonly Throttle $throttle, private readonly Presenter $presenter)
     {
     }
 
@@ -28,9 +27,9 @@ class OfferController extends Endpoint
         }
         $message = isset($body['message']) && is_string($body['message']) ? $body['message'] : null;
 
-        $this->limit($actor, 'offer', 6, 60);
+        $this->throttle->spend($actor, 'offer', 6, 60);
         $trade = $this->trades->offer($actor, $to, $body['give'] ?? [], $body['take'] ?? [], $message);
 
-        return TradesController::present($actor, [$trade], $this->catalog);
+        return $this->presenter->trades($actor, [$trade]);
     }
 }

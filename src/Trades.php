@@ -7,14 +7,13 @@ use ErnestDefoe\StickerBook\Exception\StickerException;
 use ErnestDefoe\StickerBook\Notification\TradeBlueprint;
 use Flarum\Notification\NotificationSyncer;
 use Flarum\User\User;
-use Illuminate\Database\ConnectionInterface;
 
 /**
  * Trades of spares between two members.
  *
  * 🚨 Nothing is held while an offer waits, so an offer can't lock up a
- * sticker. Accepting does everything in one transaction: both members'
- * collector rows are locked (in id order), the trade moves from pending to
+ * sticker. Accepting does everything in one transaction that only one
+ * request per member can be in (Collection::exclusive), the trade moves from pending to
  * accepted in a guarded UPDATE (it is accepted once), and every spare leaves
  * its owner in a guarded UPDATE that keeps at least one copy. If either side
  * no longer has the spares, the whole transaction rolls back and the offer
@@ -35,7 +34,6 @@ class Trades
     public const MAX_PENDING_TO_ONE = 3;
 
     public function __construct(
-        private readonly ConnectionInterface $db,
         private readonly Catalog $catalog,
         private readonly Collection $collection,
         private readonly NotificationSyncer $notifications,
@@ -111,59 +109,64 @@ class Trades
         }
         $this->assertOldEnough($actor);
 
-        $failed = false;
-        $completed = [];
         try {
-            $completed = $this->db->transaction(function () use ($trade) {
-                $this->collection->lock([$trade->from_user_id, $trade->to_user_id]);
-
-                $moved = Trade::query()->whereKey($trade->id)->where('status', Trade::PENDING)
-                    ->where('created_at', '>=', Carbon::now()->subDays(Trade::LIFETIME_DAYS))
-                    ->update(['status' => Trade::ACCEPTED, 'decided_at' => Carbon::now()]);
-                if ($moved !== 1) {
-                    throw new StickerException('sticker_trade_closed');
-                }
-
-                $live = $this->catalog->liveStickers();
-                foreach ([[$trade->from_user_id, $trade->give], [$trade->to_user_id, $trade->take]] as [$owner, $items]) {
-                    foreach ($items as [$id, $n]) {
-                        if (! isset($live[$id]) || ! $this->collection->takeSpares($owner, $id, $n)) {
-                            throw new StickerException('sticker_trade_spares_gone');
-                        }
-                    }
-                }
-
-                $this->collection->add($trade->to_user_id, $this->counts($trade->give));
-                $this->collection->add($trade->from_user_id, $this->counts($trade->take));
-
-                return [
-                    $trade->to_user_id => $this->collection->settle($trade->to_user_id, array_column($trade->give, 0)),
-                    $trade->from_user_id => $this->collection->settle($trade->from_user_id, array_column($trade->take, 0)),
-                ];
-            });
+            $completed = $this->collection->exclusive([$trade->from_user_id, $trade->to_user_id], fn () => $this->swap($trade));
         } catch (StickerException $e) {
-            if ($e->errorCode !== 'sticker_trade_spares_gone') {
-                throw $e;
+            if ($e->errorCode === 'sticker_trade_spares_gone') {
+                $this->fail($trade, $actor);
             }
-            $failed = true;
-        }
 
-        if ($failed) {
-            // Rolled back above; the offer can't go through, so it closes.
-            Trade::query()->whereKey($trade->id)->where('status', Trade::PENDING)->update(['status' => Trade::FAILED, 'decided_at' => Carbon::now()]);
-            $trade->refresh();
-            $this->notifications->sync(new TradeBlueprint($trade, $actor, 'failed'), [$this->user($trade->from_user_id)]);
-
-            throw new StickerException('sticker_trade_spares_gone');
+            throw $e;
         }
 
         $trade->refresh();
         $from = $this->user($trade->from_user_id);
-        $this->collection->awardBadges($actor, $completed[$actor->id] ?? []);
-        $this->collection->awardBadges($from, $completed[$from->id] ?? []);
+        $this->collection->announce($actor, $completed[$actor->id] ?? []);
+        $this->collection->announce($from, $completed[$from->id] ?? []);
         $this->notifications->sync(new TradeBlueprint($trade, $actor, 'accepted'), [$from]);
 
         return $trade;
+    }
+
+    /**
+     * Inside the transaction: pending → accepted once, every spare out of its
+     * owner's hands (or everything rolls back), then in to the other side.
+     *
+     * @return array<int, list<int>> member id => sets they completed
+     */
+    private function swap(Trade $trade): array
+    {
+        $moved = Trade::query()->whereKey($trade->id)->where('status', Trade::PENDING)
+            ->where('created_at', '>=', Carbon::now()->subDays(Trade::LIFETIME_DAYS))
+            ->update(['status' => Trade::ACCEPTED, 'decided_at' => Carbon::now()]);
+        if ($moved !== 1) {
+            throw new StickerException('sticker_trade_closed');
+        }
+
+        $live = $this->catalog->liveStickers();
+        foreach ([[$trade->from_user_id, $trade->give], [$trade->to_user_id, $trade->take]] as [$owner, $items]) {
+            foreach ($items as [$id, $n]) {
+                if (! isset($live[$id]) || ! $this->collection->takeSpares($owner, $id, $n)) {
+                    throw new StickerException('sticker_trade_spares_gone');
+                }
+            }
+        }
+
+        $this->collection->add($trade->to_user_id, $this->counts($trade->give));
+        $this->collection->add($trade->from_user_id, $this->counts($trade->take));
+
+        return [
+            $trade->to_user_id => $this->collection->settle($trade->to_user_id, array_column($trade->give, 0)),
+            $trade->from_user_id => $this->collection->settle($trade->from_user_id, array_column($trade->take, 0)),
+        ];
+    }
+
+    /** Rolled back already; the offer can't go through, so it closes as failed and the sender hears why. */
+    private function fail(Trade $trade, User $actor): void
+    {
+        Trade::query()->whereKey($trade->id)->where('status', Trade::PENDING)->update(['status' => Trade::FAILED, 'decided_at' => Carbon::now()]);
+        $trade->refresh();
+        $this->notifications->sync(new TradeBlueprint($trade, $actor, 'failed'), [$this->user($trade->from_user_id)]);
     }
 
     /** The recipient declines, or the sender takes the offer back. */

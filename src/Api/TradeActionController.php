@@ -2,7 +2,6 @@
 
 namespace ErnestDefoe\StickerBook\Api;
 
-use ErnestDefoe\StickerBook\Catalog;
 use ErnestDefoe\StickerBook\Exception\StickerException;
 use ErnestDefoe\StickerBook\Settings;
 use ErnestDefoe\StickerBook\Trade;
@@ -17,7 +16,7 @@ use Psr\Http\Message\ServerRequestInterface;
  */
 class TradeActionController extends Endpoint
 {
-    public function __construct(private readonly Trades $trades, private readonly Catalog $catalog)
+    public function __construct(private readonly Trades $trades, private readonly Throttle $throttle, private readonly Presenter $presenter)
     {
     }
 
@@ -33,7 +32,7 @@ class TradeActionController extends Endpoint
         }
 
         $action = (string) Arr::get($request->getQueryParams(), 'action');
-        $this->limit($actor, 'trade-action', 20, 300);
+        $this->throttle->spend($actor, 'trade-action', 20, 300);
         $trade = match ($action) {
             'accept' => $this->trades->accept($trade, $actor),
             'decline' => $trade->to_user_id === $actor->id ? $this->trades->close($trade, $actor) : throw new StickerException('sticker_trade_not_found', 404),
@@ -41,6 +40,6 @@ class TradeActionController extends Endpoint
             default => throw new StickerException('sticker_trade_not_found', 404),
         };
 
-        return TradesController::present($actor, [$trade], $this->catalog);
+        return $this->presenter->trades($actor, [$trade]);
     }
 }

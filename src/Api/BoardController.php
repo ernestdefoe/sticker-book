@@ -11,7 +11,7 @@ use Psr\Http\Message\ServerRequestInterface;
 /** GET /api/sticker-book/board: the members with the most different stickers. */
 class BoardController extends Endpoint
 {
-    public function __construct(private readonly Collection $collection, private readonly Catalog $catalog)
+    public function __construct(private readonly Collection $collection, private readonly Catalog $catalog, private readonly Presenter $presenter)
     {
     }
 
@@ -21,7 +21,7 @@ class BoardController extends Endpoint
 
         $rows = $this->collection->collectors()->where('unique_count', '>', 0)
             ->orderByDesc('unique_count')->orderBy('last_opened_at')->limit(15)->get(['user_id', 'unique_count']);
-        $users = Presenter::visible($actor, $rows->pluck('user_id')->map(fn ($id) => (int) $id)->all());
+        $users = $this->presenter->visible($actor, $rows->pluck('user_id')->map(fn ($id) => (int) $id)->all());
         $visible = array_column($users, 'id');
 
         return [

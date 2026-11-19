@@ -26,6 +26,7 @@ class ReactController extends Endpoint
         private readonly Collection $collection,
         private readonly Reactions $reactions,
         private readonly ConnectionInterface $db,
+        private readonly Throttle $throttle,
     ) {
     }
 
@@ -43,7 +44,7 @@ class ReactController extends Endpoint
             throw new StickerException('sticker_post_not_found', 404);
         }
 
-        $this->limit($actor, 'react', 30, 500);
+        $this->throttle->spend($actor, 'react', 30, 500);
         $sticker = $body['sticker'] ?? null;
 
         if ($sticker === null) {

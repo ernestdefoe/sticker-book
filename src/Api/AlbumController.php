@@ -23,6 +23,7 @@ class AlbumController extends Endpoint
         private readonly Collection $collection,
         private readonly SlugManager $slugs,
         private readonly ConnectionInterface $db,
+        private readonly Presenter $presenter,
     ) {
     }
 
@@ -59,7 +60,7 @@ class AlbumController extends Endpoint
         $collector = $this->collection->collectors()->where('user_id', $user->id)->first();
 
         return [
-            'user' => Presenter::users([$user])[0],
+            'user' => $this->presenter->users([$user])[0],
             'sets' => $sets,
             'stats' => [
                 'unique' => count(array_intersect_key($counts, $this->catalog->liveStickers())),

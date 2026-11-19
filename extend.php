@@ -20,20 +20,18 @@
 
 use ErnestDefoe\StickerBook\Admin;
 use ErnestDefoe\StickerBook\Api;
-use ErnestDefoe\StickerBook\Catalog;
+use ErnestDefoe\StickerBook\Badges\AwardSetBadges;
+use ErnestDefoe\StickerBook\Badges\BadgesServiceProvider;
 use ErnestDefoe\StickerBook\Console\StarterCommand;
+use ErnestDefoe\StickerBook\Event\SetsCompleted;
 use ErnestDefoe\StickerBook\Gdpr\StickerData;
 use ErnestDefoe\StickerBook\Http\PageContent;
 use ErnestDefoe\StickerBook\Listener\EarnPacks;
 use ErnestDefoe\StickerBook\Listener\ForgetDeletedUser;
 use ErnestDefoe\StickerBook\Notification\TradeBlueprint;
-use ErnestDefoe\StickerBook\Packs;
-use ErnestDefoe\StickerBook\Settings;
-use Flarum\Api\Context;
 use Flarum\Api\Resource\ForumResource;
 use Flarum\Api\Resource\PostResource;
 use Flarum\Api\Resource\UserResource;
-use Flarum\Api\Schema;
 use Flarum\Extend;
 use Flarum\Foundation\Paths;
 use Flarum\Gdpr\Extend\UserData;
@@ -98,25 +96,23 @@ return [
     (new Extend\ApiResource(PostResource::class))
         ->fields(Api\PostFields::class),
 
-    // The viewer's permissions are already loaded; the pack status is two small queries, on forum loads only, for members who collect.
     (new Extend\ApiResource(ForumResource::class))
-        ->fields(fn () => [
-            Schema\Boolean::make('stickerCanView')
-                ->get(fn ($forum, Context $context) => $context->getActor()->can(Settings::VIEW)),
-            Schema\Boolean::make('stickerCanTrade')
-                ->get(fn ($forum, Context $context) => $context->getActor()->can(Settings::TRADE)),
-            Schema\Boolean::make('stickerCanReact')
-                ->get(fn ($forum, Context $context) => $context->getActor()->can(Settings::REACT) && resolve(Settings::class)->reactions()),
-            Schema\Attribute::make('stickerStatus')
-                ->visible(fn ($forum, Context $context) => ! $context->getActor()->isGuest() && $context->getActor()->can(Settings::COLLECT) && resolve(Catalog::class)->liveStickers())
-                ->get(fn ($forum, Context $context) => resolve(Packs::class)->status($context->getActor())),
-        ]),
+        ->fields(Api\ForumFields::class),
 
     (new Extend\Settings())
         ->default('ernestdefoe-sticker-book.nav', true)
         ->default('ernestdefoe-sticker-book.reactions', true)
         ->default('ernestdefoe-sticker-book.guarantee_rare', true)
         ->default('ernestdefoe-sticker-book.first_post', true)
+        ->default('ernestdefoe-sticker-book.pack_size', 5)
+        ->default('ernestdefoe-sticker-book.pity', 40)
+        ->default('ernestdefoe-sticker-book.likes_per_pack', 5)
+        ->default('ernestdefoe-sticker-book.extra_cap', 2)
+        ->default('ernestdefoe-sticker-book.trade_min_age', 7)
+        ->default('ernestdefoe-sticker-book.odds_common', 70)
+        ->default('ernestdefoe-sticker-book.odds_rare', 22)
+        ->default('ernestdefoe-sticker-book.odds_epic', 6.5)
+        ->default('ernestdefoe-sticker-book.odds_legendary', 1.5)
         ->serializeToForum('stickerNav', 'ernestdefoe-sticker-book.nav', 'boolval'),
 
     (new Extend\Event())
@@ -126,9 +122,16 @@ return [
     (new Extend\Conditional())
         ->whenExtensionEnabled('flarum-likes', fn () => [
             (new Extend\Event())
-                ->listen(\Flarum\Likes\Event\PostWasLiked::class, fn ($event) => resolve(EarnPacks::class)->liked($event->post, $event->user)),
+                ->listen(\Flarum\Likes\Event\PostWasLiked::class, [EarnPacks::class, 'liked']),
         ])
         ->whenExtensionEnabled('flarum-gdpr', fn () => [
             (new UserData())->addType(StickerData::class),
+        ])
+        // A completed set's badge, and the badges to pick from in the admin: nothing of FoF Badges loads without it.
+        ->whenExtensionEnabled('fof-badges', fn () => [
+            (new Extend\ServiceProvider())
+                ->register(BadgesServiceProvider::class),
+            (new Extend\Event())
+                ->listen(SetsCompleted::class, AwardSetBadges::class),
         ]),
 ];

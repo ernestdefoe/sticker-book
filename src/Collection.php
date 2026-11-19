@@ -3,23 +3,27 @@
 namespace ErnestDefoe\StickerBook;
 
 use Carbon\Carbon;
-use Flarum\Extension\ExtensionManager;
+use Closure;
+use ErnestDefoe\StickerBook\Exception\StickerException;
+use ErnestDefoe\StickerBook\Event\SetsCompleted;
 use Flarum\User\User;
+use Illuminate\Contracts\Cache\LockProvider;
+use Illuminate\Contracts\Cache\Repository;
+use Illuminate\Contracts\Events\Dispatcher;
 use Illuminate\Database\ConnectionInterface;
 use Illuminate\Database\Query\Builder;
-use Throwable;
 
 /**
- * What members own. Writes happen inside the caller's transaction, after the
- * member's collector row is locked (Collection::lock), so one member's packs
- * and trades run one after another.
+ * What members own. Writes happen inside Collection::exclusive, so one
+ * member's packs and trades run one after another.
  */
 class Collection
 {
     public function __construct(
         private readonly ConnectionInterface $db,
+        private readonly Repository $cache,
         private readonly Catalog $catalog,
-        private readonly ExtensionManager $extensions,
+        private readonly Dispatcher $events,
     ) {
     }
 
@@ -34,19 +38,45 @@ class Collection
     }
 
     /**
-     * The collector rows of these members, created when missing and locked
-     * for the rest of the transaction, in id order (two trades between the
-     * same members can't deadlock).
+     * Run $work in a transaction that only one request per member can be in:
+     * a pack being opened, a trade going through. A cache lock per member
+     * (taken in id order, never waited for: a second request at the same
+     * moment is told to try again) makes this hold on every database, since
+     * SQLite has no row locks; inside it the collector rows are made when
+     * missing and locked for update as well, for MySQL and PostgreSQL.
      *
+     * @template T
      * @param list<int> $userIds
-     * @return array<int, object>
+     * @param Closure(array<int, object>): T $work Gets the collector rows by member id.
+     * @return T
      */
-    public function lock(array $userIds): array
+    public function exclusive(array $userIds, Closure $work): mixed
     {
+        $userIds = array_values(array_unique($userIds));
         sort($userIds);
-        $this->collectors()->insertOrIgnore(array_map(fn ($id) => ['user_id' => $id], $userIds));
 
-        return $this->collectors()->whereIn('user_id', $userIds)->orderBy('user_id')->lockForUpdate()->get()->keyBy('user_id')->all();
+        // A cache driver without locks (a custom one) leaves the row locks alone to do it.
+        $store = $this->cache->getStore();
+        $held = [];
+        try {
+            foreach ($store instanceof LockProvider ? $userIds : [] as $id) {
+                $lock = $store->lock('ernestdefoe-sticker-book.collector.'.$id, 10);
+                if (! $lock->get()) {
+                    throw new StickerException('sticker_busy', 409);
+                }
+                $held[] = $lock;
+            }
+
+            return $this->db->transaction(function () use ($userIds, $work) {
+                $this->collectors()->insertOrIgnore(array_map(fn ($id) => ['user_id' => $id], $userIds));
+
+                return $work($this->collectors()->whereIn('user_id', $userIds)->orderBy('user_id')->lockForUpdate()->get()->keyBy('user_id')->all());
+            });
+        } finally {
+            foreach (array_reverse($held) as $lock) {
+                $lock->release();
+            }
+        }
     }
 
     /**
@@ -131,27 +161,16 @@ class Collection
     }
 
     /**
-     * The set's FoF Badges badge, when the admin chose one and FoF Badges is
-     * on. Called after the transaction: a badge problem never undoes a pack.
+     * Tell listeners (FoF Badges, when it is on) which sets a member just
+     * completed. Called after the transaction: a listener's problem never
+     * undoes a pack or a trade.
      *
      * @param list<int> $setIds
      */
-    public function awardBadges(User $user, array $setIds): void
+    public function announce(User $user, array $setIds): void
     {
-        if (! $setIds || ! $this->extensions->isEnabled('fof-badges') || ! class_exists(\FoF\Badges\BadgeAwarder::class)) {
-            return;
-        }
-
-        $sets = array_filter($this->catalog->all()['sets'], fn ($set) => in_array($set['id'], $setIds, true) && $set['badgeId']);
-        foreach ($sets as $set) {
-            try {
-                $badge = \FoF\Badges\Badge::query()->find($set['badgeId']);
-                if ($badge) {
-                    resolve(\FoF\Badges\BadgeAwarder::class)->award($user, $badge, \FoF\Badges\UserBadge::GRANTED_BY_SYSTEM);
-                }
-            } catch (Throwable $e) {
-                resolve('log')->warning('[sticker-book] Could not award the badge for set '.$set['id'].': '.$e->getMessage());
-            }
+        if ($setIds) {
+            $this->events->dispatch(new SetsCompleted($user, $setIds));
         }
     }
 }

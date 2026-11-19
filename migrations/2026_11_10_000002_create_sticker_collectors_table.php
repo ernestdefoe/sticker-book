@@ -8,7 +8,7 @@ use Illuminate\Database\Schema\Blueprint;
  *  - daily_on: the day (UTC) their free pack was last claimed.
  *  - post_on: the day their "first post of the day" pack was last given.
  *  - extra_on / extra_count: extra packs earned that day, for the daily cap.
- *  - like_progress: likes received toward the next pack (an unlike takes one back).
+ *  - like_progress: likes received toward the next pack (each member's like on a post counts once, ever).
  *  - pity: packs opened since their last legendary.
  *  - unique_count: distinct stickers owned, for the collectors board.
  */

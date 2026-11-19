@@ -26,7 +26,7 @@ class Art
 
     private const SMALL = 256;
 
-    public function __construct(private readonly Factory $filesystems)
+    public function __construct(private readonly Factory $filesystems, private readonly ImageManager $images)
     {
     }
 
@@ -35,8 +35,7 @@ class Art
      */
     public function store(string $source): array
     {
-        $manager = resolve(ImageManager::class);
-        $image = $manager->read($source)->scaleDown(width: self::FULL, height: self::FULL);
+        $image = $this->images->read($source)->scaleDown(width: self::FULL, height: self::FULL);
         $small = (clone $image)->scaleDown(width: self::SMALL, height: self::SMALL);
         // Every visible pixel black, the alpha kept: the sticker's outline and nothing else.
         $silhouette = (clone $small)->brightness(-100)->contrast(100);

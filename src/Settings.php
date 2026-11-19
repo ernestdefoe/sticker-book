@@ -9,7 +9,6 @@ final class Settings
 {
     public const PREFIX = 'ernestdefoe-sticker-book.';
 
-    public const NAV = self::PREFIX.'nav';
     public const PACK_SIZE = self::PREFIX.'pack_size';
     public const ODDS = self::PREFIX.'odds_';             // + common, rare, epic, legendary
     public const PITY = self::PREFIX.'pity';               // packs without a legendary before one is certain; 0 = off
@@ -28,7 +27,7 @@ final class Settings
     public const RARITIES = ['common', 'rare', 'epic', 'legendary'];
     public const LEGENDARY = 3;
 
-    /** Defaults, in percent: one legendary in about 67 stickers before pity. */
+    /** The shipped odds, in percent (one legendary in about 67 stickers before pity): what an all-zero setup rolls with. */
     public const DEFAULT_ODDS = ['common' => 70, 'rare' => 22, 'epic' => 6.5, 'legendary' => 1.5];
 
     /** Unopened packs a member can hold; earning stops at this many. */
@@ -40,49 +39,49 @@ final class Settings
 
     public function packSize(): int
     {
-        return $this->int(self::PACK_SIZE, 5, 1, 10);
+        return $this->int(self::PACK_SIZE, 1, 10);
     }
 
     public function pity(): int
     {
-        return $this->int(self::PITY, 40, 0, 1000);
+        return $this->int(self::PITY, 0, 1000);
     }
 
     public function guaranteeRare(): bool
     {
-        return (bool) ($this->settings->get(self::GUARANTEE_RARE) ?? true);
+        return (bool) $this->settings->get(self::GUARANTEE_RARE);
     }
 
     public function firstPost(): bool
     {
-        return (bool) ($this->settings->get(self::FIRST_POST) ?? true);
+        return (bool) $this->settings->get(self::FIRST_POST);
     }
 
     public function likesPerPack(): int
     {
-        return $this->int(self::LIKES, 5, 0, 1000);
+        return $this->int(self::LIKES, 0, 1000);
     }
 
     public function extraCap(): int
     {
-        return $this->int(self::EXTRA_CAP, 2, 0, 20);
+        return $this->int(self::EXTRA_CAP, 0, 20);
     }
 
     /** Days an account must be old to trade, so fresh accounts can't funnel stickers to a main one. */
     public function tradeMinAge(): int
     {
-        return $this->int(self::TRADE_MIN_AGE, 7, 0, 365);
+        return $this->int(self::TRADE_MIN_AGE, 0, 365);
     }
 
     public function reactions(): bool
     {
-        return (bool) ($this->settings->get(self::REACTIONS) ?? true);
+        return (bool) $this->settings->get(self::REACTIONS);
     }
 
     /**
-     * Weights per rarity in hundredths of a percent, for random_int. A rarity
-     * the admin set to nothing (or something that isn't a number) falls back to
-     * its default; all zero falls back to the defaults.
+     * Weights per rarity in hundredths of a percent, for random_int. Defaults
+     * are registered in extend.php; an emptied field is 0 (that rarity never
+     * drops). All zero can't be rolled, so then the shipped odds apply.
      *
      * @return list<int>
      */
@@ -90,9 +89,7 @@ final class Settings
     {
         $weights = [];
         foreach (self::RARITIES as $name) {
-            $value = $this->settings->get(self::ODDS.$name);
-            $value = is_numeric($value) ? (float) $value : self::DEFAULT_ODDS[$name];
-            $weights[] = (int) round(max(0, min(100, $value)) * 100);
+            $weights[] = (int) round(max(0, min(100, (float) $this->settings->get(self::ODDS.$name))) * 100);
         }
 
         return array_sum($weights) > 0 ? $weights : array_map(fn ($v) => (int) round($v * 100), array_values(self::DEFAULT_ODDS));
@@ -107,10 +104,9 @@ final class Settings
         return array_combine(self::RARITIES, array_map(fn ($w) => round($w * 100 / $total, 2), $weights));
     }
 
-    private function int(string $key, int $default, int $min, int $max): int
+    /** Defaults are registered in extend.php; an emptied field reads as 0, kept within its limits. */
+    private function int(string $key, int $min, int $max): int
     {
-        $value = $this->settings->get($key);
-
-        return is_numeric($value) ? max($min, min($max, (int) $value)) : $default;
+        return max($min, min($max, (int) $this->settings->get($key)));
     }
 }

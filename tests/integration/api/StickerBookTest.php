@@ -7,10 +7,12 @@ use ErnestDefoe\StickerBook\Catalog;
 use ErnestDefoe\StickerBook\Listener\EarnPacks;
 use ErnestDefoe\StickerBook\Packs;
 use Flarum\Discussion\Discussion;
+use Flarum\Likes\Event\PostWasLiked;
 use Flarum\Post\Post;
 use Flarum\Testing\integration\RetrievesAuthorizedUsers;
 use Flarum\Testing\integration\TestCase;
 use Flarum\User\User;
+use Illuminate\Contracts\Cache\Repository;
 use Illuminate\Database\ConnectionInterface;
 use PHPUnit\Framework\Attributes\Test;
 
@@ -49,6 +51,14 @@ class StickerBookTest extends TestCase
                 ['id' => 1, 'discussion_id' => 1, 'user_id' => 2, 'type' => 'comment', 'content' => '<t><p>Hi</p></t>', 'created_at' => $now, 'number' => 1],
             ],
         ]);
+    }
+
+    protected function tearDown(): void
+    {
+        // The cache outlives a test (the catalog, the rate limits, the locks): each test leaves it empty.
+        $this->app()->getContainer()->make(Repository::class)->flush();
+
+        parent::tearDown();
     }
 
     /** @return array{int, array<string, mixed>|null} */
@@ -95,6 +105,21 @@ class StickerBookTest extends TestCase
         [$status, $body] = $this->api('POST', '/open', 2);
         $this->assertSame(422, $status);
         $this->assertSame('sticker_no_pack', $body['errors'][0]['code']);
+    }
+
+    #[Test]
+    public function a_second_request_for_the_same_member_is_told_to_try_again(): void
+    {
+        $lock = $this->app()->getContainer()->make(Repository::class)->getStore()->lock('ernestdefoe-sticker-book.collector.2', 10);
+        $this->assertTrue($lock->get());
+
+        [$status, $body] = $this->api('POST', '/open', 2);
+        $this->assertSame(409, $status);
+        $this->assertSame('sticker_busy', $body['errors'][0]['code']);
+        $this->assertSame(0, $this->db()->table('sticker_packs')->count());
+
+        $lock->release();
+        $this->assertSame(200, $this->api('POST', '/open', 2)[0]);
     }
 
     #[Test]
@@ -195,7 +220,9 @@ class StickerBookTest extends TestCase
 
         $completed = [];
         for ($i = 0; $i < 21 && $this->owns(2, 6) === 0; $i++) {
-            $completed = [...$completed, ...$this->api('POST', '/open', 2)[1]['completed']];
+            [$status, $body] = $this->api('POST', '/open', 2);
+            $this->assertSame(200, $status, json_encode($body));
+            $completed = [...$completed, ...$body['completed']];
         }
         $this->assertSame([['id' => 2, 'name' => 'Snacks']], $completed);
         $this->assertSame(1, $this->db()->table('sticker_completions')->where('user_id', 2)->count());
@@ -333,24 +360,24 @@ class StickerBookTest extends TestCase
         $packs = fn () => $this->db()->table('sticker_packs')->where('user_id', 2)->count();
 
         // Dana likes, unlikes and likes again: one like.
-        $earn->liked($post, User::query()->find(3));
-        $earn->liked($post, User::query()->find(3));
+        $earn->liked(new PostWasLiked($post, User::query()->find(3)));
+        $earn->liked(new PostWasLiked($post, User::query()->find(3)));
         $this->assertSame(0, $packs());
 
         // Sam's like makes two: a pack.
-        $earn->liked($post, User::query()->find(4));
+        $earn->liked(new PostWasLiked($post, User::query()->find(4)));
         $this->assertSame(1, $packs());
 
         // After the pack, both take their likes back and like again: nothing more, ever.
         foreach ([3, 4, 3, 4] as $liker) {
-            $earn->liked($post, User::query()->find($liker));
+            $earn->liked(new PostWasLiked($post, User::query()->find($liker)));
         }
         $this->assertSame(1, $packs());
         $this->assertSame(0, (int) $this->db()->table('sticker_collectors')->where('user_id', 2)->value('like_progress'));
 
         // Liking your own post earns nothing.
-        $earn->liked($post, User::query()->find(2));
-        $earn->liked($post, User::query()->find(2));
+        $earn->liked(new PostWasLiked($post, User::query()->find(2)));
+        $earn->liked(new PostWasLiked($post, User::query()->find(2)));
         $this->assertSame(1, $packs());
     }
 
@@ -431,13 +458,44 @@ class StickerBookTest extends TestCase
     }
 
     #[Test]
+    public function the_starter_sets_are_added_hidden_through_the_queue(): void
+    {
+        [$status, $body] = $this->api('POST', '/starter', 1);
+        $this->assertSame(200, $status, json_encode($body));
+        $this->assertTrue($body['queued']);
+
+        // The test queue runs jobs at once: four sets of eight, hidden, each once.
+        $this->assertSame(4, $this->db()->table('sticker_sets')->where('is_hidden', 1)->count());
+        $this->assertSame(32, $this->db()->table('stickers')->whereIn('set_id', $this->db()->table('sticker_sets')->where('is_hidden', 1)->pluck('id'))->count());
+        $this->api('POST', '/starter', 1);
+        $this->assertSame(6, $this->db()->table('sticker_sets')->count());
+    }
+
+    #[Test]
+    public function deleting_a_set_takes_its_stickers_copies_and_counts(): void
+    {
+        $this->give(2, 1, 2);
+        $this->give(2, 5, 1);
+        $this->db()->table('sticker_collectors')->insert(['user_id' => 2, 'unique_count' => 2]);
+
+        $this->assertSame(200, $this->api('DELETE', '/sets/1', 1)[0]);
+        $this->assertSame(0, $this->db()->table('stickers')->where('set_id', 1)->count());
+        $this->assertSame(0, $this->owns(2, 1));
+        $this->assertSame(1, $this->owns(2, 5));
+        $this->assertSame(1, (int) $this->db()->table('sticker_collectors')->where('user_id', 2)->value('unique_count'));
+    }
+
+    #[Test]
     public function admin_endpoints_are_for_admins(): void
     {
         $this->assertSame(403, $this->api('GET', '/admin', 2)[0]);
         $this->assertSame(403, $this->api('POST', '/sets', 2, ['name' => 'Mine'])[0]);
         $this->assertSame(403, $this->api('DELETE', '/stickers/1', 2)[0]);
         $this->assertSame(403, $this->api('POST', '/gift', 2, ['username' => 'normal', 'count' => 50])[0]);
-        $this->assertSame(200, $this->api('GET', '/admin', 1)[0]);
+        [$status, $body] = $this->api('GET', '/admin', 1);
+        $this->assertSame(200, $status);
+        // Without FoF Badges there is nothing to pick from.
+        $this->assertSame([], $body['badges']);
     }
 
     #[Test]

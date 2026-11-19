@@ -150,7 +150,7 @@ ernestdefoe-sticker-book:
       help: Members collect stickers set by set. A hidden set is in no pack and no album, so you can build it first. Upload PNG, WebP or JPEG art (PNG or WebP with a transparent background looks best); each image is resized and stored as WebP.
       empty: There are no sets yet. Start with the four starter sets (32 original stickers) or make your own.
       add_starter: Add the starter sets
-      starter_added: "{count, plural, =0 {The starter sets are already here.} one {Added # starter set, hidden. Show it when you're ready.} other {Added # starter sets, hidden. Show them when you're ready.}}"
+      starter_queued: The starter sets are being added, hidden. They appear here in a moment; show them when you're ready.
       add_set: New set
       add_sticker: Add a sticker
       hidden: Hidden
@@ -213,6 +213,7 @@ ernestdefoe-sticker-book:
       sticker_book_empty: There are no stickers to collect yet.
       sticker_no_pack: You have no packs to open right now.
       sticker_slow_down: You're going a little fast. Try again in a minute.
+      sticker_busy: Something else is changing your stickers right now. Try again in a moment.
       sticker_trade_self: You can't trade with yourself.
       sticker_trade_unavailable: That member can't trade stickers.
       sticker_trade_empty: Choose at least one of your spares to offer.

@@ -2,21 +2,22 @@
 
 namespace ErnestDefoe\StickerBook\Listener;
 
+use ErnestDefoe\StickerBook\Catalog;
 use ErnestDefoe\StickerBook\Collection;
 use ErnestDefoe\StickerBook\Packs;
 use ErnestDefoe\StickerBook\Settings;
+use Flarum\Likes\Event\PostWasLiked;
 use Flarum\Post\Event\Posted;
-use Flarum\Post\Post;
 use Flarum\User\User;
 use Illuminate\Database\ConnectionInterface;
 use Illuminate\Database\Query\Builder;
 
 /**
  * Extra packs for taking part, all within the daily cap (Packs::earn):
- * the first post of the day (once it is approved), and every N likes a
- * member's posts receive. 🚨 Each member's like on a post counts once, ever
- * (sticker_like_credits, kept on unlike): liking, unliking and liking again
- * earns nothing.
+ * the first post of the day (a post still awaiting approval earns nothing),
+ * and every N likes a member's posts receive. 🚨 Each member's like on a
+ * post counts once, ever (sticker_like_credits, kept on unlike): liking,
+ * unliking and liking again earns nothing.
  */
 class EarnPacks
 {
@@ -25,13 +26,14 @@ class EarnPacks
         private readonly Packs $packs,
         private readonly Collection $collection,
         private readonly ConnectionInterface $db,
+        private readonly Catalog $catalog,
     ) {
     }
 
     public function posted(Posted $event): void
     {
         $user = $event->post->user;
-        // A post waiting for approval (flarum/approval's column, when it is there) doesn't count yet.
+        // A post waiting for approval (flarum/approval's column, when it is there) earns nothing.
         $attributes = $event->post->getAttributes();
         if ((array_key_exists('is_approved', $attributes) && ! $attributes['is_approved']) || ! $user || ! $this->settings->firstPost() || ! $this->collects($user)) {
             return;
@@ -48,8 +50,10 @@ class EarnPacks
         }
     }
 
-    public function liked(Post $post, User $liker): void
+    public function liked(PostWasLiked $event): void
     {
+        $post = $event->post;
+        $liker = $event->user;
         $owner = $post->user;
         $every = $this->settings->likesPerPack();
         if (! $every || ! $owner || $owner->id === $liker->id || ! $this->collects($owner)) {
@@ -71,6 +75,6 @@ class EarnPacks
 
     private function collects(User $user): bool
     {
-        return $user->hasPermission(Settings::COLLECT) && (bool) resolve(\ErnestDefoe\StickerBook\Catalog::class)->liveStickers();
+        return $user->hasPermission(Settings::COLLECT) && (bool) $this->catalog->liveStickers();
     }
 }

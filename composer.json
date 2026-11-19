@@ -34,6 +34,12 @@
         "php": "^8.3",
         "flarum/core": "^2.0"
     },
+    "suggest": {
+        "flarum/approval": "Posts awaiting approval don't earn the first-post pack.",
+        "flarum/likes": "Members earn extra packs as their posts are liked.",
+        "flarum/gdpr": "Sticker collections, packs, trades and reactions in a member's data export and erasure.",
+        "fof/badges": "Award a badge to members who complete a set."
+    },
     "autoload": {
         "psr-4": {
             "ErnestDefoe\\StickerBook\\": "src/"
@@ -54,6 +60,7 @@
                 "color": "#fff"
             },
             "optional-dependencies": [
+                "flarum/approval",
                 "flarum/gdpr",
                 "flarum/likes",
                 "fof/badges"
@@ -64,7 +71,8 @@
         "flarum/gdpr": "^2.0",
         "flarum/likes": "^2.0",
         "flarum/phpstan": "^2.0",
-        "flarum/testing": "^2.0"
+        "flarum/testing": "^2.0",
+        "fof/badges": "^2.0"
     },
     "scripts": {
         "test": [

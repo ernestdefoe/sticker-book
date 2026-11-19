@@ -18,8 +18,8 @@ use Illuminate\Database\Query\Builder;
  * - Extra packs (first post of the day, likes received) count against a
  *   daily cap in one guarded UPDATE as well.
  * - Opening marks the pack opened in a guarded UPDATE (it opens once), rolls
- *   the stickers and adds them, inside one transaction with the member's
- *   collector row locked.
+ *   the stickers and adds them, inside one transaction that only one request
+ *   per member can be in (Collection::exclusive).
  */
 class Packs
 {
@@ -74,25 +74,37 @@ class Packs
             return false;
         }
 
-        return $this->db->transaction(function () use ($userId, $source, $cap) {
-            $this->collection->lock([$userId]);
-            if ($this->packs()->where('user_id', $userId)->whereNull('opened_at')->count() >= Settings::MAX_UNOPENED) {
+        try {
+            return $this->collection->exclusive([$userId], fn () => $this->earnLocked($userId, $source, $cap));
+        } catch (StickerException $e) {
+            // Earned while that member was opening a pack this very moment: the
+            // like or post that earned it stays, this pack is skipped.
+            if ($e->errorCode === 'sticker_busy') {
                 return false;
             }
 
-            $today = self::today();
-            $collectors = fn () => $this->collection->collectors()->where('user_id', $userId);
-            // Today's count goes up while under the cap; a new day starts it again at one.
-            $counted = $collectors()->where('extra_on', $today)->where('extra_count', '<', $cap)->increment('extra_count') === 1
-                || $collectors()->where(fn (Builder $q) => $q->whereNull('extra_on')->orWhere('extra_on', '<', $today))->update(['extra_on' => $today, 'extra_count' => 1]) === 1;
-            if (! $counted) {
-                return false;
-            }
+            throw $e;
+        }
+    }
 
-            $this->packs()->insert(['user_id' => $userId, 'source' => $source, 'created_at' => Carbon::now()]);
+    private function earnLocked(int $userId, string $source, int $cap): bool
+    {
+        if ($this->packs()->where('user_id', $userId)->whereNull('opened_at')->count() >= Settings::MAX_UNOPENED) {
+            return false;
+        }
 
-            return true;
-        });
+        $today = self::today();
+        $collectors = fn () => $this->collection->collectors()->where('user_id', $userId);
+        // Today's count goes up while under the cap; a new day starts it again at one.
+        $counted = $collectors()->where('extra_on', $today)->where('extra_count', '<', $cap)->increment('extra_count') === 1
+            || $collectors()->where(fn (Builder $q) => $q->whereNull('extra_on')->orWhere('extra_on', '<', $today))->update(['extra_on' => $today, 'extra_count' => 1]) === 1;
+        if (! $counted) {
+            return false;
+        }
+
+        $this->packs()->insert(['user_id' => $userId, 'source' => $source, 'created_at' => Carbon::now()]);
+
+        return true;
     }
 
     /** A pack from an admin (no cap, no daily count). */
@@ -115,23 +127,9 @@ class Packs
             throw new StickerException('sticker_book_empty');
         }
 
-        $result = $this->db->transaction(function () use ($user, $pools): array {
-            $collector = $this->collection->lock([(int) $user->id])[$user->id];
-            $today = self::today();
-
-            $claimed = $this->collection->collectors()->where('user_id', $user->id)
-                ->where(fn (Builder $q) => $q->whereNull('daily_on')->orWhere('daily_on', '<', $today))
-                ->update(['daily_on' => $today]);
-
-            if ($claimed === 1) {
-                $packId = (int) $this->packs()->insertGetId(['user_id' => $user->id, 'source' => 'daily', 'created_at' => Carbon::now()]);
-            } else {
-                $packId = (int) $this->packs()->where('user_id', $user->id)->whereNull('opened_at')->orderBy('id')->value('id');
-            }
-
-            if (! $packId || $this->packs()->where('id', $packId)->whereNull('opened_at')->update(['opened_at' => Carbon::now()]) !== 1) {
-                throw new StickerException('sticker_no_pack');
-            }
+        $result = $this->collection->exclusive([(int) $user->id], function (array $rows) use ($user, $pools): array {
+            $collector = $rows[$user->id];
+            $packId = $this->claim((int) $user->id);
 
             $pityDue = $this->settings->pity() > 0 && (int) $collector->pity + 1 >= $this->settings->pity();
             $ids = $this->roll($pools, $pityDue);
@@ -150,34 +148,70 @@ class Packs
             ]);
 
             $completed = $this->collection->settle((int) $user->id, array_keys($counts));
-            $owned = $this->collection->owned()->where('user_id', $user->id)->whereIn('sticker_id', array_keys($counts))->pluck('count', 'sticker_id');
 
-            // A sticker that is new shows "New" on its first copy only.
-            $shownNew = [];
-            $cards = [];
-            foreach ($ids as $id) {
-                $isNew = in_array($id, $new, true) && ! isset($shownNew[$id]);
-                $shownNew[$id] = true;
-                $cards[] = [...($this->catalog->card($id) ?? []), 'new' => $isNew, 'count' => (int) ($owned[$id] ?? 1)];
-            }
-
-            // Rarest last: the best card is the one turned over at the end.
-            usort($cards, fn ($a, $b) => $a['rarity'] <=> $b['rarity']);
-
-            // Two copies in one pack read ×3 then ×4, not ×4 twice: each card shows the count as it lands.
-            $later = $counts;
-            foreach ($cards as &$card) {
-                $later[$card['id']]--;
-                $card['count'] -= $later[$card['id']];
-            }
-            unset($card);
-
-            return ['cards' => $cards, 'completed' => $completed, 'source' => $source];
+            return ['cards' => $this->cards((int) $user->id, $ids, $new), 'completed' => $completed, 'source' => $source];
         });
 
-        $this->collection->awardBadges($user, $result['completed']);
+        $this->collection->announce($user, $result['completed']);
 
         return $result;
+    }
+
+    /**
+     * The pack being opened, marked opened in a guarded UPDATE (it opens
+     * once): today's free one when it is unclaimed, else the oldest earned one.
+     */
+    private function claim(int $userId): int
+    {
+        $today = self::today();
+        $claimed = $this->collection->collectors()->where('user_id', $userId)
+            ->where(fn (Builder $q) => $q->whereNull('daily_on')->orWhere('daily_on', '<', $today))
+            ->update(['daily_on' => $today]);
+
+        $packId = $claimed === 1
+            ? (int) $this->packs()->insertGetId(['user_id' => $userId, 'source' => 'daily', 'created_at' => Carbon::now()])
+            : (int) $this->packs()->where('user_id', $userId)->whereNull('opened_at')->orderBy('id')->value('id');
+
+        if (! $packId || $this->packs()->where('id', $packId)->whereNull('opened_at')->update(['opened_at' => Carbon::now()]) !== 1) {
+            throw new StickerException('sticker_no_pack');
+        }
+
+        return $packId;
+    }
+
+    /**
+     * The cards as the reveal shows them: rarest last, "New" on a new
+     * sticker's first copy only, each with the count as it lands.
+     *
+     * @param list<int> $ids the pack's stickers
+     * @param list<int> $new the ones the member didn't have before
+     * @return list<array<string, mixed>>
+     */
+    private function cards(int $userId, array $ids, array $new): array
+    {
+        $counts = array_count_values($ids);
+        $owned = $this->collection->owned()->where('user_id', $userId)->whereIn('sticker_id', array_keys($counts))->pluck('count', 'sticker_id');
+
+        $shownNew = [];
+        $cards = [];
+        foreach ($ids as $id) {
+            $isNew = in_array($id, $new, true) && ! isset($shownNew[$id]);
+            $shownNew[$id] = true;
+            $cards[] = [...($this->catalog->card($id) ?? []), 'new' => $isNew, 'count' => (int) ($owned[$id] ?? 1)];
+        }
+
+        // Rarest last: the best card is the one turned over at the end.
+        usort($cards, fn ($a, $b) => $a['rarity'] <=> $b['rarity']);
+
+        // Two copies in one pack read ×3 then ×4, not ×4 twice: each card shows the count as it lands.
+        $later = $counts;
+        foreach ($cards as &$card) {
+            $later[$card['id']]--;
+            $card['count'] -= $later[$card['id']];
+        }
+        unset($card);
+
+        return $cards;
     }
 
     /**

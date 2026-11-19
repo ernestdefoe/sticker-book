@@ -13,7 +13,7 @@ use Psr\Http\Message\ServerRequestInterface;
 /** GET /api/sticker-book/spares?sticker=ID: members with a spare of a sticker, to trade with. */
 class SparesController extends Endpoint
 {
-    public function __construct(private readonly Collection $collection, private readonly Catalog $catalog)
+    public function __construct(private readonly Collection $collection, private readonly Catalog $catalog, private readonly Presenter $presenter)
     {
     }
 
@@ -29,7 +29,7 @@ class SparesController extends Endpoint
 
         $rows = $this->collection->owned()->where('sticker_id', $id)->where('count', '>', 1)->where('user_id', '<>', $actor->id)
             ->orderByDesc('count')->limit(24)->pluck('count', 'user_id');
-        $users = Presenter::visible($actor, $rows->keys()->map(fn ($id) => (int) $id)->all());
+        $users = $this->presenter->visible($actor, $rows->keys()->map(fn ($id) => (int) $id)->all());
 
         return [
             'spares' => array_map(fn ($user) => [$user['id'], (int) $rows[$user['id']] - 1], $users),

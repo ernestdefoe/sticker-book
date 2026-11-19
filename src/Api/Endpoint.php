@@ -2,7 +2,6 @@
 
 namespace ErnestDefoe\StickerBook\Api;
 
-use ErnestDefoe\StickerBook\Exception\StickerException;
 use Flarum\Http\RequestUtil;
 use Flarum\User\User;
 use Laminas\Diactoros\Response\JsonResponse;
@@ -10,7 +9,14 @@ use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Server\RequestHandlerInterface;
 
-/** Our endpoints: a refusal (StickerException) becomes an error in Flarum's shape, with a code the browser turns into a sentence. */
+/**
+ * Our custom endpoints: actions (open a pack, react, gift, add the starter
+ * sets) and read models shaped per viewer (an album with silhouettes for what
+ * they don't have, the board, who has spares, the pack status). None of them
+ * is a record to create, list or change, so none is a JSON:API resource; the
+ * sets, stickers and trades are (Api\Resource). A refusal (StickerException)
+ * reaches the browser through StickerErrorHandler, like any API error.
+ */
 abstract class Endpoint implements RequestHandlerInterface
 {
     /** @return array<string, mixed> */
@@ -18,11 +24,7 @@ abstract class Endpoint implements RequestHandlerInterface
 
     public function handle(ServerRequestInterface $request): ResponseInterface
     {
-        try {
-            return new JsonResponse($this->run($request, RequestUtil::getActor($request)));
-        } catch (StickerException $e) {
-            return new JsonResponse(['errors' => [['status' => (string) $e->status, 'code' => $e->errorCode]]], $e->status);
-        }
+        return new JsonResponse($this->run($request, RequestUtil::getActor($request)));
     }
 
     /** @return array<string, mixed> */

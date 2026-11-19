@@ -4,6 +4,8 @@ namespace ErnestDefoe\StickerBook;
 
 use Carbon\Carbon;
 use Flarum\Database\AbstractModel;
+use Flarum\User\User;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
  * @property int $id
@@ -15,6 +17,8 @@ use Flarum\Database\AbstractModel;
  * @property string|null $message
  * @property Carbon $created_at
  * @property Carbon|null $decided_at
+ * @property-read User|null $from
+ * @property-read User|null $to
  */
 class Trade extends AbstractModel
 {
@@ -50,5 +54,17 @@ class Trade extends AbstractModel
     public function isExpired(): bool
     {
         return $this->created_at->lt(Carbon::now()->subDays(self::LIFETIME_DAYS));
+    }
+
+    /** @return BelongsTo<User, $this> */
+    public function from(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'from_user_id');
+    }
+
+    /** @return BelongsTo<User, $this> */
+    public function to(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'to_user_id');
     }
 }

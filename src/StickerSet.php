@@ -24,6 +24,6 @@ class StickerSet extends AbstractModel
     /** @return HasMany<Sticker, $this> */
     public function stickers(): HasMany
     {
-        return $this->hasMany(Sticker::class, 'set_id');
+        return $this->hasMany(Sticker::class, 'set_id')->orderBy('position');
     }
 }

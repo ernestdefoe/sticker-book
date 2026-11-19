@@ -14,6 +14,7 @@ use Flarum\Testing\integration\TestCase;
 use Flarum\User\User;
 use Illuminate\Contracts\Cache\Repository;
 use Illuminate\Database\ConnectionInterface;
+use Laminas\Diactoros\UploadedFile;
 use PHPUnit\Framework\Attributes\Test;
 
 class StickerBookTest extends TestCase
@@ -73,6 +74,33 @@ class StickerBookTest extends TestCase
             $request = $request->withQueryParams($query);
         }
         $response = $this->send($request);
+
+        return [$response->getStatusCode(), json_decode((string) $response->getBody(), true)];
+    }
+
+    /**
+     * Offer a trade through the JSON:API resource.
+     *
+     * @return array{int, array<string, mixed>|null}
+     */
+    private function offer(int $as, int $to, mixed $give, array $take = [], ?string $message = null): array
+    {
+        $response = $this->send($this->request('POST', '/api/sticker-book-trades', [
+            'authenticatedAs' => $as,
+            'json' => ['data' => [
+                'type' => 'sticker-book-trades',
+                'attributes' => ['give' => $give, 'take' => $take, 'message' => $message],
+                'relationships' => ['to' => ['data' => ['type' => 'users', 'id' => (string) $to]]],
+            ]],
+        ]));
+
+        return [$response->getStatusCode(), json_decode((string) $response->getBody(), true)];
+    }
+
+    /** @return array{int, array<string, mixed>|null} */
+    private function act(int $as, int|string $id, string $action): array
+    {
+        $response = $this->send($this->request('POST', "/api/sticker-book-trades/$id/$action", ['authenticatedAs' => $as]));
 
         return [$response->getStatusCode(), json_decode((string) $response->getBody(), true)];
     }
@@ -234,22 +262,22 @@ class StickerBookTest extends TestCase
         $this->give(2, 1, 3);
         $this->give(3, 2, 2);
 
-        [$status, $body] = $this->api('POST', '/trades', 2, ['to' => 3, 'give' => [[1, 2]], 'take' => [[2, 1]], 'message' => 'Deal?']);
-        $this->assertSame(200, $status, json_encode($body));
-        $id = $body['trades'][0]['id'];
+        [$status, $body] = $this->offer(2, 3, [[1, 2]], [[2, 1]], 'Deal?');
+        $this->assertSame(201, $status, json_encode($body));
+        $id = $body['data']['id'];
         $this->assertSame(1, $this->db()->table('notifications')->where('user_id', 3)->where('type', 'stickerTrade')->count());
 
         // Only the recipient accepts.
-        $this->assertSame(404, $this->api('POST', "/trades/$id/accept", 2)[0]);
-        $this->assertSame(404, $this->api('POST', "/trades/$id/accept", 4)[0]);
+        $this->assertSame(404, $this->act(2, $id, 'accept')[0]);
+        $this->assertSame(404, $this->act(4, $id, 'accept')[0]);
 
-        [$status, $body] = $this->api('POST', "/trades/$id/accept", 3);
+        [$status, $body] = $this->act(3, $id, 'accept');
         $this->assertSame(200, $status, json_encode($body));
-        $this->assertSame('accepted', $body['trades'][0]['status']);
+        $this->assertSame('accepted', $body['data']['attributes']['status']);
         $this->assertSame([1, 2, 1, 1], [$this->owns(2, 1), $this->owns(3, 1), $this->owns(3, 2), $this->owns(2, 2)]);
 
         // A second accept changes nothing.
-        $this->assertSame('sticker_trade_closed', $this->api('POST', "/trades/$id/accept", 3)[1]['errors'][0]['code']);
+        $this->assertSame('sticker_trade_closed', $this->act(3, $id, 'accept')[1]['errors'][0]['code']);
         $this->assertSame([1, 2, 1, 1], [$this->owns(2, 1), $this->owns(3, 1), $this->owns(3, 2), $this->owns(2, 2)]);
     }
 
@@ -259,14 +287,14 @@ class StickerBookTest extends TestCase
         $this->give(2, 1, 1);
         $this->give(3, 2, 1);
 
-        $this->assertSame('sticker_trade_no_spares', $this->api('POST', '/trades', 2, ['to' => 3, 'give' => [[1, 1]]])[1]['errors'][0]['code']);
+        $this->assertSame('sticker_trade_no_spares', $this->offer(2, 3, [[1, 1]])[1]['errors'][0]['code']);
         $this->give(2, 3, 2);
-        $this->assertSame('sticker_trade_they_have_no_spares', $this->api('POST', '/trades', 2, ['to' => 3, 'give' => [[3, 1]], 'take' => [[2, 1]]])[1]['errors'][0]['code']);
-        $this->assertSame('sticker_trade_self', $this->api('POST', '/trades', 2, ['to' => 2, 'give' => [[3, 1]]])[1]['errors'][0]['code']);
-        foreach ([[[3, 0]], [[3, -1]], [[3, 'x']], [[99, 1]], [[3, 1], [3, 1]], 'nope'] as $bad) {
+        $this->assertSame('sticker_trade_they_have_no_spares', $this->offer(2, 3, [[3, 1]], [[2, 1]])[1]['errors'][0]['code']);
+        $this->assertSame('sticker_trade_self', $this->offer(2, 2, [[3, 1]])[1]['errors'][0]['code']);
+        foreach ([[[3, 0]], [[3, -1]], [[3, 'x']], [[99, 1]], [[3, 1], [3, 1]]] as $bad) {
             // Offers are rate-limited; this test is about what is refused, not how often.
             $this->app()->getContainer()->make('cache.store')->flush();
-            $this->assertSame('sticker_trade_invalid', $this->api('POST', '/trades', 2, ['to' => 3, 'give' => $bad])[1]['errors'][0]['code'], json_encode($bad));
+            $this->assertSame('sticker_trade_invalid', $this->offer(2, 3, $bad)[1]['errors'][0]['code'], json_encode($bad));
         }
     }
 
@@ -278,11 +306,11 @@ class StickerBookTest extends TestCase
         $this->give(4, 3, 1);
 
         // Two offers of the same spare: the first accepted uses it up.
-        $first = $this->api('POST', '/trades', 2, ['to' => 3, 'give' => [[1, 1]], 'take' => [[2, 1]]])[1]['trades'][0]['id'];
-        $second = $this->api('POST', '/trades', 2, ['to' => 4, 'give' => [[1, 1]]])[1]['trades'][0]['id'];
+        $first = $this->offer(2, 3, [[1, 1]], [[2, 1]])[1]['data']['id'];
+        $second = $this->offer(2, 4, [[1, 1]])[1]['data']['id'];
 
-        $this->assertSame(200, $this->api('POST', "/trades/$second/accept", 4)[0]);
-        [$status, $body] = $this->api('POST', "/trades/$first/accept", 3);
+        $this->assertSame(200, $this->act(4, $second, 'accept')[0]);
+        [$status, $body] = $this->act(3, $first, 'accept');
         $this->assertSame(422, $status);
         $this->assertSame('sticker_trade_spares_gone', $body['errors'][0]['code']);
         $this->assertSame('failed', $this->db()->table('sticker_trades')->where('id', $first)->value('status'));
@@ -294,12 +322,12 @@ class StickerBookTest extends TestCase
     public function declining_and_cancelling_belong_to_each_side(): void
     {
         $this->give(2, 1, 5);
-        $id = $this->api('POST', '/trades', 2, ['to' => 3, 'give' => [[1, 1]]])[1]['trades'][0]['id'];
+        $id = $this->offer(2, 3, [[1, 1]])[1]['data']['id'];
 
-        $this->assertSame(404, $this->api('POST', "/trades/$id/decline", 2)[0]);
-        $this->assertSame(404, $this->api('POST', "/trades/$id/cancel", 3)[0]);
-        $this->assertSame('cancelled', $this->api('POST', "/trades/$id/cancel", 2)[1]['trades'][0]['status']);
-        $this->assertSame('sticker_trade_closed', $this->api('POST', "/trades/$id/accept", 3)[1]['errors'][0]['code']);
+        $this->assertSame(404, $this->act(2, $id, 'decline')[0]);
+        $this->assertSame(404, $this->act(3, $id, 'cancel')[0]);
+        $this->assertSame('cancelled', $this->act(2, $id, 'cancel')[1]['data']['attributes']['status']);
+        $this->assertSame('sticker_trade_closed', $this->act(3, $id, 'accept')[1]['errors'][0]['code']);
         $this->assertSame(0, $this->db()->table('notifications')->where('user_id', 3)->where('type', 'stickerTrade')->where('is_deleted', 0)->count());
     }
 
@@ -307,10 +335,10 @@ class StickerBookTest extends TestCase
     public function expired_offers_cannot_be_accepted(): void
     {
         $this->give(2, 1, 2);
-        $id = $this->api('POST', '/trades', 2, ['to' => 3, 'give' => [[1, 1]]])[1]['trades'][0]['id'];
+        $id = $this->offer(2, 3, [[1, 1]])[1]['data']['id'];
         $this->db()->table('sticker_trades')->where('id', $id)->update(['created_at' => Carbon::now()->subDays(15)]);
 
-        $this->assertSame('sticker_trade_closed', $this->api('POST', "/trades/$id/accept", 3)[1]['errors'][0]['code']);
+        $this->assertSame('sticker_trade_closed', $this->act(3, $id, 'accept')[1]['errors'][0]['code']);
         $this->assertSame(2, $this->owns(2, 1));
     }
 
@@ -404,20 +432,20 @@ class StickerBookTest extends TestCase
         $this->give(2, 1, 3);
         $this->db()->table('users')->where('id', 2)->update(['joined_at' => Carbon::now()->subDays(2)]);
 
-        [$status, $body] = $this->api('POST', '/trades', 2, ['to' => 3, 'give' => [[1, 1]]]);
+        [$status, $body] = $this->offer(2, 3, [[1, 1]]);
         $this->assertSame(403, $status);
         $this->assertSame('sticker_trade_too_new', $body['errors'][0]['code']);
 
         // An older account offers; a new one can't accept.
         $this->db()->table('users')->where('id', 2)->update(['joined_at' => Carbon::now()->subDays(30)]);
         $this->db()->table('users')->where('id', 3)->update(['joined_at' => Carbon::now()->subDay()]);
-        $id = $this->api('POST', '/trades', 2, ['to' => 3, 'give' => [[1, 1]]])[1]['trades'][0]['id'];
-        $this->assertSame('sticker_trade_too_new', $this->api('POST', "/trades/$id/accept", 3)[1]['errors'][0]['code']);
+        $id = $this->offer(2, 3, [[1, 1]])[1]['data']['id'];
+        $this->assertSame('sticker_trade_too_new', $this->act(3, $id, 'accept')[1]['errors'][0]['code']);
         $this->assertSame(3, $this->owns(2, 1));
 
         // The admin can lower the bar.
         $this->app()->getContainer()->make(\Flarum\Settings\SettingsRepositoryInterface::class)->set('ernestdefoe-sticker-book.trade_min_age', '0');
-        $this->assertSame(200, $this->api('POST', "/trades/$id/accept", 3)[0]);
+        $this->assertSame(200, $this->act(3, $id, 'accept')[0]);
     }
 
     #[Test]
@@ -478,7 +506,7 @@ class StickerBookTest extends TestCase
         $this->give(2, 5, 1);
         $this->db()->table('sticker_collectors')->insert(['user_id' => 2, 'unique_count' => 2]);
 
-        $this->assertSame(200, $this->api('DELETE', '/sets/1', 1)[0]);
+        $this->assertSame(204, $this->send($this->request('DELETE', '/api/sticker-book-sets/1', ['authenticatedAs' => 1]))->getStatusCode());
         $this->assertSame(0, $this->db()->table('stickers')->where('set_id', 1)->count());
         $this->assertSame(0, $this->owns(2, 1));
         $this->assertSame(1, $this->owns(2, 5));
@@ -488,14 +516,115 @@ class StickerBookTest extends TestCase
     #[Test]
     public function admin_endpoints_are_for_admins(): void
     {
-        $this->assertSame(403, $this->api('GET', '/admin', 2)[0]);
-        $this->assertSame(403, $this->api('POST', '/sets', 2, ['name' => 'Mine'])[0]);
-        $this->assertSame(403, $this->api('DELETE', '/stickers/1', 2)[0]);
+        $as = fn (int $user, string $method, string $path, array $json = []) => $this->send($this->request($method, $path, ['authenticatedAs' => $user] + ($json ? ['json' => $json] : [])))->getStatusCode();
+
+        $this->assertSame(403, $as(2, 'GET', '/api/sticker-book-sets'));
+        $this->assertSame(403, $as(2, 'POST', '/api/sticker-book-sets', ['data' => ['type' => 'sticker-book-sets', 'attributes' => ['name' => 'Mine']]]));
+        $this->assertSame(403, $as(2, 'PATCH', '/api/sticker-book-sets/1', ['data' => ['type' => 'sticker-book-sets', 'id' => '1', 'attributes' => ['name' => 'Mine']]]));
+        $this->assertSame(403, $as(2, 'DELETE', '/api/sticker-book-stickers/1'));
+        $this->assertSame(403, $as(2, 'POST', '/api/sticker-book-stickers/1/art'));
+        $this->assertSame(403, $as(2, 'POST', '/api/sticker-book-sets/order', ['sets' => [2, 1]]));
         $this->assertSame(403, $this->api('POST', '/gift', 2, ['username' => 'normal', 'count' => 50])[0]);
-        [$status, $body] = $this->api('GET', '/admin', 1);
-        $this->assertSame(200, $status);
-        // Without FoF Badges there is nothing to pick from.
-        $this->assertSame([], $body['badges']);
+        $this->assertSame(1, (int) $this->db()->table('sticker_sets')->where('id', 1)->value('position'));
+    }
+
+    #[Test]
+    public function the_admin_lists_sets_with_their_stickers_and_owners_in_a_fixed_number_of_queries(): void
+    {
+        $this->give(2, 1, 2);
+        $this->give(3, 1, 1);
+        $response = $this->send($this->request('GET', '/api/sticker-book-sets', ['authenticatedAs' => 1]));
+        $body = json_decode((string) $response->getBody(), true);
+
+        $this->assertSame(200, $response->getStatusCode(), json_encode($body));
+        $this->assertSame(['Woods', 'Snacks'], array_map(fn ($set) => $set['attributes']['name'], $body['data']));
+        $fox = array_values(array_filter($body['included'], fn ($r) => $r['type'] === 'sticker-book-stickers' && $r['id'] === '1'))[0];
+        $this->assertSame(2, $fox['attributes']['ownerCount']);
+        $this->assertSame('Fox', $fox['attributes']['name']);
+    }
+
+    #[Test]
+    public function the_admin_makes_changes_orders_and_removes_sets_and_stickers(): void
+    {
+        $send = fn (string $method, string $path, array $json = []) => $this->send($this->request($method, $path, ['authenticatedAs' => 1] + ($json ? ['json' => $json] : [])));
+
+        $response = $send('POST', '/api/sticker-book-sets', ['data' => ['type' => 'sticker-book-sets', 'attributes' => ['name' => 'Birds', 'isHidden' => true]]]);
+        $this->assertSame(201, $response->getStatusCode(), (string) $response->getBody());
+        $set = json_decode((string) $response->getBody(), true)['data'];
+        $this->assertSame(3, $set['attributes']['position']);
+        $this->assertSame(422, $send('POST', '/api/sticker-book-sets', ['data' => ['type' => 'sticker-book-sets', 'attributes' => ['name' => '  ']]])->getStatusCode());
+
+        $response = $send('PATCH', '/api/sticker-book-sets/'.$set['id'], ['data' => ['type' => 'sticker-book-sets', 'id' => $set['id'], 'attributes' => ['name' => 'Birds of prey', 'badgeId' => 7]]]);
+        $this->assertSame(200, $response->getStatusCode(), (string) $response->getBody());
+        $this->assertSame(7, (int) $this->db()->table('sticker_sets')->where('id', $set['id'])->value('badge_id'));
+
+        $response = $send('POST', '/api/sticker-book-stickers', ['data' => [
+            'type' => 'sticker-book-stickers',
+            'attributes' => ['name' => 'Hawk', 'rarity' => 2],
+            'relationships' => ['set' => ['data' => ['type' => 'sticker-book-sets', 'id' => $set['id']]]],
+        ]]);
+        $this->assertSame(201, $response->getStatusCode(), (string) $response->getBody());
+        $hawk = json_decode((string) $response->getBody(), true)['data'];
+        $this->assertSame(1, $hawk['attributes']['position']);
+        // Without art it is in no pack and no album yet.
+        $this->assertArrayNotHasKey((int) $hawk['id'], $this->app()->getContainer()->make(Catalog::class)->all()['stickers']);
+        $this->assertSame(422, $send('POST', '/api/sticker-book-stickers/'.$hawk['id'].'/art')->getStatusCode());
+
+        $art = __DIR__.'/../../../resources/starter/'.json_decode((string) file_get_contents(__DIR__.'/../../../resources/starter/manifest.json'), true)['sets'][0]['stickers'][0]['file'];
+        $copy = tempnam(sys_get_temp_dir(), 'art');
+        copy($art, $copy);
+        $response = $this->send($this->request('POST', '/api/sticker-book-stickers/'.$hawk['id'].'/art', ['authenticatedAs' => 1])
+            ->withUploadedFiles(['art' => new UploadedFile($copy, (int) filesize($copy), UPLOAD_ERR_OK, 'hawk.webp', 'image/webp')]));
+        $this->assertSame(200, $response->getStatusCode(), (string) $response->getBody());
+        $this->assertNotNull(json_decode((string) $response->getBody(), true)['data']['attributes']['small']);
+        $this->assertArrayHasKey((int) $hawk['id'], $this->app()->getContainer()->make(Catalog::class)->all()['stickers']);
+
+        $this->assertSame(204, $send('POST', '/api/sticker-book-sets/order', ['sets' => [2, (int) $set['id'], 1]])->getStatusCode());
+        $this->assertSame([2, (int) $set['id'], 1], $this->db()->table('sticker_sets')->orderBy('position')->pluck('id')->map(fn ($id) => (int) $id)->all());
+        $this->assertSame(204, $send('POST', '/api/sticker-book-sets/order', ['set' => 2, 'stickers' => [6, 5]])->getStatusCode());
+        $this->assertSame([6, 5], $this->db()->table('stickers')->where('set_id', 2)->orderBy('position')->pluck('id')->map(fn ($id) => (int) $id)->all());
+
+        $this->give(2, 5, 3);
+        $this->assertSame(204, $send('DELETE', '/api/sticker-book-stickers/5')->getStatusCode());
+        $this->assertSame(0, $this->owns(2, 5));
+        $this->assertSame(0, $this->db()->table('stickers')->where('id', 5)->count());
+    }
+
+    #[Test]
+    public function a_trade_is_seen_only_by_its_two_members(): void
+    {
+        $this->give(2, 1, 3);
+        $this->give(3, 2, 2);
+        $id = $this->offer(2, 3, [[1, 1]], [[2, 1]])[1]['data']['id'];
+
+        $list = fn (?int $as) => $this->send($this->request('GET', '/api/sticker-book-trades', $as ? ['authenticatedAs' => $as] : []));
+        $ids = fn (?int $as) => array_column(json_decode((string) $list($as)->getBody(), true)['data'] ?? [], 'id');
+
+        $this->assertSame([$id], $ids(2));
+        $this->assertSame([$id], $ids(3));
+        $this->assertSame([], $ids(4));
+        $this->assertSame(401, $list(null)->getStatusCode());
+        $this->assertSame(404, $this->send($this->request('GET', "/api/sticker-book-trades/$id", ['authenticatedAs' => 4]))->getStatusCode());
+        // A guest finds nothing: the scope hides it before anything else is checked.
+        $this->assertSame(404, $this->send($this->request('GET', "/api/sticker-book-trades/$id"))->getStatusCode());
+        // Another pair's trade can't be acted on, whatever the id.
+        $this->assertSame(404, $this->act(4, $id, 'decline')[0]);
+        $this->assertSame(404, $this->act(4, $id, 'cancel')[0]);
+        $this->assertSame('pending', $this->db()->table('sticker_trades')->where('id', $id)->value('status'));
+
+        // Each side sees both members and the stickers on offer.
+        $body = json_decode((string) $list(3)->getBody(), true);
+        $this->assertEqualsCanonicalizing(['2', '3'], array_column($body['included'], 'id'));
+        $this->assertSame(['Fox', 'Owl'], array_column($body['data'][0]['attributes']['stickers'], 'name'));
+    }
+
+    #[Test]
+    public function an_offer_to_a_member_the_sender_cannot_see_is_refused(): void
+    {
+        $this->give(2, 1, 3);
+        [$status] = $this->offer(2, 999, [[1, 1]]);
+        $this->assertContains($status, [404, 422]);
+        $this->assertSame(0, $this->db()->table('sticker_trades')->count());
     }
 
     #[Test]

@@ -21,9 +21,9 @@
 use ErnestDefoe\StickerBook\Admin;
 use ErnestDefoe\StickerBook\Api;
 use ErnestDefoe\StickerBook\Badges\AwardSetBadges;
-use ErnestDefoe\StickerBook\Badges\BadgesServiceProvider;
 use ErnestDefoe\StickerBook\Console\StarterCommand;
 use ErnestDefoe\StickerBook\Event\SetsCompleted;
+use ErnestDefoe\StickerBook\Exception\StickerException;
 use ErnestDefoe\StickerBook\Gdpr\StickerData;
 use ErnestDefoe\StickerBook\Http\PageContent;
 use ErnestDefoe\StickerBook\Listener\EarnPacks;
@@ -69,20 +69,19 @@ return [
         ->get('/sticker-book/mine', 'sticker-book.mine', Api\MineController::class)
         ->get('/sticker-book/board', 'sticker-book.board', Api\BoardController::class)
         ->get('/sticker-book/spares', 'sticker-book.spares', Api\SparesController::class)
-        ->get('/sticker-book/trades', 'sticker-book.trades', Api\TradesController::class)
-        ->post('/sticker-book/trades', 'sticker-book.trades.offer', Api\OfferController::class)
-        ->post('/sticker-book/trades/{id:\d+}/{action:accept|decline|cancel}', 'sticker-book.trades.act', Api\TradeActionController::class)
         ->post('/sticker-book/react', 'sticker-book.react', Api\ReactController::class)
-        ->get('/sticker-book/admin', 'sticker-book.admin', Admin\CatalogController::class)
-        ->post('/sticker-book/sets', 'sticker-book.sets.create', Admin\SetController::class)
-        ->patch('/sticker-book/sets/{id:\d+}', 'sticker-book.sets.update', Admin\SetController::class)
-        ->delete('/sticker-book/sets/{id:\d+}', 'sticker-book.sets.delete', Admin\SetController::class)
-        ->post('/sticker-book/stickers', 'sticker-book.stickers.create', Admin\StickerController::class)
-        ->post('/sticker-book/stickers/{id:\d+}', 'sticker-book.stickers.update', Admin\StickerController::class)
-        ->delete('/sticker-book/stickers/{id:\d+}', 'sticker-book.stickers.delete', Admin\StickerController::class)
-        ->post('/sticker-book/order', 'sticker-book.order', Admin\OrderController::class)
         ->post('/sticker-book/gift', 'sticker-book.gift', Admin\GiftController::class)
         ->post('/sticker-book/starter', 'sticker-book.starter', Admin\StarterController::class),
+
+    // Members' pack, album, board and reactions are custom endpoints: actions and read models
+    // shaped per viewer (silhouettes for what they don't have), not records. The admin's sets and
+    // stickers and members' trades are JSON:API resources.
+    new Extend\ApiResource(Api\Resource\StickerSetResource::class),
+    new Extend\ApiResource(Api\Resource\StickerResource::class),
+    new Extend\ApiResource(Api\Resource\TradeResource::class),
+
+    (new Extend\ErrorHandling())
+        ->handler(StickerException::class, Api\StickerErrorHandler::class),
 
     (new Extend\Console())
         ->command(StarterCommand::class),
@@ -127,10 +126,8 @@ return [
         ->whenExtensionEnabled('flarum-gdpr', fn () => [
             (new UserData())->addType(StickerData::class),
         ])
-        // A completed set's badge, and the badges to pick from in the admin: nothing of FoF Badges loads without it.
+        // A completed set's badge: nothing of FoF Badges loads without it.
         ->whenExtensionEnabled('fof-badges', fn () => [
-            (new Extend\ServiceProvider())
-                ->register(BadgesServiceProvider::class),
             (new Extend\Event())
                 ->listen(SetsCompleted::class, AwardSetBadges::class),
         ]),

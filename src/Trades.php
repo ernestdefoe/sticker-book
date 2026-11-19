@@ -169,8 +169,27 @@ class Trades
         $this->notifications->sync(new TradeBlueprint($trade, $actor, 'failed'), [$this->user($trade->from_user_id)]);
     }
 
-    /** The recipient declines, or the sender takes the offer back. */
-    public function close(Trade $trade, User $actor): Trade
+    /** The recipient turns the offer down; the sender hears about it. */
+    public function decline(Trade $trade, User $actor): Trade
+    {
+        if ($trade->to_user_id !== $actor->id) {
+            throw new StickerException('sticker_trade_not_found', 404);
+        }
+
+        return $this->close($trade, $actor);
+    }
+
+    /** The sender takes the offer back; the recipient's notification about it goes. */
+    public function cancel(Trade $trade, User $actor): Trade
+    {
+        if ($trade->from_user_id !== $actor->id) {
+            throw new StickerException('sticker_trade_not_found', 404);
+        }
+
+        return $this->close($trade, $actor);
+    }
+
+    private function close(Trade $trade, User $actor): Trade
     {
         $status = match ($actor->id) {
             $trade->to_user_id => Trade::DECLINED,

@@ -54,13 +54,4 @@ class StickerBadgesTest extends TestCase
         $this->assertSame(1, $db->table('sticker_completions')->where('user_id', 2)->where('set_id', 1)->count());
         $this->assertSame(1, $db->table('fof_badge_user')->where('user_id', 2)->where('badge_id', 7)->count());
     }
-
-    #[Test]
-    public function the_admin_picks_from_fof_badges(): void
-    {
-        $response = $this->send($this->request('GET', '/api/sticker-book/admin', ['authenticatedAs' => 1]));
-        $body = json_decode((string) $response->getBody(), true);
-
-        $this->assertSame([['id' => 7, 'name' => 'Woodland ranger', 'icon' => 'fas fa-award']], $body['badges']);
-    }
 }

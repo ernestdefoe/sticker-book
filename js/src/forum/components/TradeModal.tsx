@@ -7,12 +7,13 @@ import LoadingIndicator from 'flarum/common/components/LoadingIndicator';
 import extractText from 'flarum/common/utils/extractText';
 import type Mithril from 'mithril';
 import type User from 'flarum/common/models/User';
-import { call, rarityName, t } from '../util';
-import type { AlbumData, AlbumSticker, TradeItem, TradePartner } from '../types';
+import { alertError, call, rarityName, t } from '../util';
+import type { AlbumData, AlbumSticker, TradeItem } from '../types';
+import type Trade from '../../common/models/Trade';
 
 export type TradeAttrs = {
   /** Who the offer is for; without it, the member picks someone. */
-  to?: TradePartner;
+  to?: User;
   give?: TradeItem[];
   take?: TradeItem[];
 };
@@ -29,7 +30,7 @@ export function openTrade(attrs: TradeAttrs = {}) {
  * checks all of it again, and again when the offer is accepted.
  */
 export default class TradeModal extends Modal<TradeModalAttrs> {
-  to!: TradePartner | null;
+  to!: User | null;
   /** Sticker id → how many. */
   give!: Map<number, number>;
   take!: Map<number, number>;
@@ -70,7 +71,7 @@ export default class TradeModal extends Modal<TradeModalAttrs> {
 
   loadTheirs() {
     this.theirs = null;
-    this.album(this.to!.slug).then((album) => (this.theirs = album));
+    this.album(this.to!.slug()).then((album) => (this.theirs = album));
   }
 
   content() {
@@ -109,11 +110,11 @@ export default class TradeModal extends Modal<TradeModalAttrs> {
   }
 
   /** The member the offer is for, with a way to pick someone else (unless the window was opened for them). */
-  person(to: TradePartner) {
+  person(to: User) {
     return (
       <div className="StickerTrade-person">
-        <Avatar user={app.store.getById<User>('users', String(to.id)) || null} />
-        <strong>{to.displayName}</strong>
+        <Avatar user={to} />
+        <strong>{to.displayName()}</strong>
         {this.attrs.to ? null : (
           <Button className="Button Button--link" onclick={() => ((this.to = null), (this.theirs = null), this.take.clear())}>
             {t('trade.change')}
@@ -132,7 +133,7 @@ export default class TradeModal extends Modal<TradeModalAttrs> {
           <Icon name="fas fa-right-left" />
         </div>
         {this.to ? (
-          this.side(t('trade.you_get', { name: this.to.displayName }), this.theirs, this.take, this.give, false)
+          this.side(t('trade.you_get', { name: this.to.displayName() }), this.theirs, this.take, this.give, false)
         ) : (
           <div className="StickerTrade-side is-waiting">
             <h4>{t('trade.you_get_anyone')}</h4>
@@ -160,7 +161,7 @@ export default class TradeModal extends Modal<TradeModalAttrs> {
                 <button
                   type="button"
                   onclick={() => {
-                    this.to = { id: Number(u.id()), displayName: u.displayName(), slug: u.slug() };
+                    this.to = u;
                     this.results = [];
                     this.query = '';
                     this.loadTheirs();
@@ -253,19 +254,24 @@ export default class TradeModal extends Modal<TradeModalAttrs> {
   send() {
     const to = this.to!;
     this.loading = true;
-    call('POST', '/trades', {
-      to: to.id,
-      give: [...this.give.entries()],
-      take: [...this.take.entries()],
-      message: this.message,
-    })
+    app.store
+      .createRecord<Trade>('sticker-book-trades')
+      .save(
+        {
+          give: [...this.give.entries()],
+          take: [...this.take.entries()],
+          message: this.message || null,
+          relationships: { to },
+        },
+        { errorHandler: alertError }
+      )
       .then(() => {
         this.hide();
-        app.alerts.show({ type: 'success' }, t('trade.sent', { name: to.displayName }));
+        app.alerts.show({ type: 'success' }, t('trade.sent', { name: to.displayName() }));
         window.dispatchEvent(new CustomEvent('sticker-book:changed'));
       })
       .catch(() => {
-        /* call() already showed the error */
+        /* alertError already showed the error */
       })
       .finally(() => {
         this.loading = false;

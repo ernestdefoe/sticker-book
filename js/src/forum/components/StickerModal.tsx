@@ -4,8 +4,9 @@ import Button from 'flarum/common/components/Button';
 import Avatar from 'flarum/common/components/Avatar';
 import username from 'flarum/common/helpers/username';
 import type Mithril from 'mithril';
+import type User from 'flarum/common/models/User';
 import { call, pushUsers, rarityName, t, user } from '../util';
-import type { AlbumData, AlbumSticker, SparesData, UserRow } from '../types';
+import type { AlbumData, AlbumSticker, SparesData } from '../types';
 import { openTrade, type TradeAttrs } from './TradeModal';
 
 export type StickerAttrs = {
@@ -31,6 +32,8 @@ export default class StickerModal extends Modal<StickerModalAttrs> {
   oninit(vnode: Mithril.Vnode<StickerModalAttrs, this>) {
     super.oninit(vnode);
     this.spares = null;
+    // The album's owner as a store user, for the trade form.
+    if (this.attrs.album.user) pushUsers([this.attrs.album.user]);
   }
 
   className() {
@@ -45,7 +48,7 @@ export default class StickerModal extends Modal<StickerModalAttrs> {
     const { sticker: s, album, own } = this.attrs;
     const me = app.session.user;
     const canTrade = me && app.forum.attribute('stickerCanTrade');
-    const owner = album.user;
+    const owner = album.user ? user(album.user.id) : null;
 
     return (
       <div className="Modal-body">
@@ -58,10 +61,10 @@ export default class StickerModal extends Modal<StickerModalAttrs> {
             {s.count
               ? own
                 ? t('sticker.you_have', { count: s.count, spares: s.count - 1 })
-                : t('sticker.they_have', { name: owner?.displayName, count: s.count })
+                : t('sticker.they_have', { name: owner?.displayName(), count: s.count })
               : own
                 ? t('sticker.you_need')
-                : t('sticker.they_need', { name: owner?.displayName })}
+                : t('sticker.they_need', { name: owner?.displayName() })}
           </span>
         </p>
 
@@ -70,7 +73,7 @@ export default class StickerModal extends Modal<StickerModalAttrs> {
     );
   }
 
-  actions(s: AlbumSticker, own: boolean, owner: UserRow | null) {
+  actions(s: AlbumSticker, own: boolean, owner: User | null) {
     if (own && s.count > 1) {
       return (
         <Button className="Button Button--primary Button--block" icon="fas fa-right-left" onclick={() => this.trade({ give: [[s.id, 1]] })}>
@@ -85,7 +88,7 @@ export default class StickerModal extends Modal<StickerModalAttrs> {
           icon="fas fa-hand-holding-heart"
           onclick={() => this.trade({ to: owner, take: [[s.id, 1]] })}
         >
-          {t('sticker.ask', { name: owner.displayName })}
+          {t('sticker.ask', { name: owner.displayName() })}
         </Button>
       );
     }
@@ -109,13 +112,13 @@ export default class StickerModal extends Modal<StickerModalAttrs> {
         <ul>
           {this.spares.map(([id, n]) => {
             const u = user(id);
-            const row = { id, displayName: u?.displayName(), slug: u?.slug() };
+            if (!u) return null;
             return (
               <li>
                 <span className="StickerSpares-who">
                   <Avatar user={u} /> {username(u)} <span className="StickerSpares-n">{t('sticker.spare_count', { count: n })}</span>
                 </span>
-                <Button className="Button Button--primary" onclick={() => this.trade({ to: row, take: [[s.id, 1]] })}>
+                <Button className="Button Button--primary" onclick={() => this.trade({ to: u, take: [[s.id, 1]] })}>
                   {t('sticker.propose')}
                 </Button>
               </li>

@@ -3,36 +3,23 @@ import Component, { type ComponentAttrs } from 'flarum/common/Component';
 import Button from 'flarum/common/components/Button';
 import LoadingIndicator from 'flarum/common/components/LoadingIndicator';
 import Switch from 'flarum/common/components/Switch';
+import Icon from 'flarum/common/components/Icon';
 import extractText from 'flarum/common/utils/extractText';
+import isExtensionEnabled from 'flarum/admin/utils/isExtensionEnabled';
+import type { ApiPayloadSingle } from 'flarum/common/Store';
 import type Mithril from 'mithril';
-import { call } from '../common/api';
+import { alertError, call, request } from '../common/api';
+import type StickerSet from '../common/models/StickerSet';
+import type Sticker from '../common/models/Sticker';
 
 const t = (key: string, params: Record<string, unknown> = {}) => app.translator.trans(`ernestdefoe-sticker-book.admin.sets.${key}`, params);
 const RARITIES = ['common', 'rare', 'epic', 'legendary'];
 const rarity = (r: number) => app.translator.trans(`ernestdefoe-sticker-book.admin.rarity.${RARITIES[r]}`);
 const value = (e: Event) => (e.target as HTMLInputElement).value;
 
-interface AdminSticker {
+interface Badge {
   id: number;
   name: string;
-  rarity: number;
-  small: string;
-  full: string;
-  owners: number;
-}
-
-interface AdminSet {
-  id: number;
-  name: string;
-  description: string | null;
-  badgeId: number | null;
-  hidden: boolean;
-  stickers: AdminSticker[];
-}
-
-interface AdminData {
-  sets: AdminSet[];
-  badges: { id: number; name: string }[];
 }
 
 interface SetForm {
@@ -46,7 +33,24 @@ interface StickerForm {
   name: string;
   rarity: number;
   file: File | null;
-  preview?: string;
+  preview?: string | null;
+}
+
+/** FoF Badges' badges, for the badge a completed set awards (none without FoF Badges, or if they can't be had). */
+function loadBadges(): Promise<Badge[]> {
+  if (!isExtensionEnabled('fof-badges')) return Promise.resolve([]);
+  return request<{ data: { id: string; attributes: { name: string } }[] }>('GET', '/badges', undefined, { quiet: true })
+    .then((payload) => payload.data.map((b) => ({ id: Number(b.id), name: b.attributes.name })))
+    .catch(() => []);
+}
+
+/** Sends a sticker's art (multipart: JSON:API carries no files) and puts the sticker as it is now in the store. */
+function uploadArt(sticker: Sticker, file: File) {
+  const body = new FormData();
+  body.append('art', file);
+  return request<ApiPayloadSingle>('POST', `/sticker-book-stickers/${sticker.id()}/art`, body, { raw: true }).then((payload) =>
+    app.store.pushPayload<Sticker>(payload)
+  );
 }
 
 /**
@@ -55,7 +59,8 @@ interface StickerForm {
  * small copy and the silhouette members see until they have it).
  */
 export default class SetsEditor extends Component {
-  data: AdminData | null = null;
+  sets: StickerSet[] | null = null;
+  badges: Badge[] = [];
   /** 'set:new', 'set:<id>', 'sticker:<setId>:new', 'sticker:<id>' */
   editing: string | null = null;
   form: Partial<SetForm & StickerForm> = {};
@@ -65,17 +70,22 @@ export default class SetsEditor extends Component {
   oninit(vnode: Mithril.Vnode<ComponentAttrs, this>) {
     super.oninit(vnode);
     this.load();
+    loadBadges().then((badges) => {
+      this.badges = badges;
+      m.redraw();
+    });
   }
 
   load() {
-    return call<AdminData>('GET', '/admin')
-      .then((data) => (this.data = data))
+    return app.store
+      .find<StickerSet[]>('sticker-book-sets', {}, undefined, { background: true, errorHandler: alertError })
+      .then((sets) => (this.sets = sets))
       .finally(() => m.redraw());
   }
 
   view() {
-    if (!this.data) return <LoadingIndicator />;
-    const { sets } = this.data;
+    const sets = this.sets;
+    if (!sets) return <LoadingIndicator />;
 
     return (
       <div className="Form-group StickerAdmin">
@@ -154,33 +164,20 @@ export default class SetsEditor extends Component {
     ];
   }
 
-  set(set: AdminSet, i: number, count: number) {
+  set(set: StickerSet, i: number, count: number) {
+    const stickers = set.stickers();
     return (
-      <div className={`StickerAdmin-set ${set.hidden ? 'is-hidden' : ''}`} key={set.id}>
+      <div className={`StickerAdmin-set ${set.isHidden() ? 'is-hidden' : ''}`} key={set.id()}>
         {this.setHead(set, i, count)}
-        {set.description ? <p className="helpText">{set.description}</p> : null}
-        {this.editing === `set:${set.id}` ? this.setForm(set) : null}
+        {set.description() ? <p className="helpText">{set.description()}</p> : null}
+        {this.editing === `set:${set.id()}` ? this.setForm(set) : null}
 
-        <div className="StickerAdmin-grid">
-          {set.stickers.map((s) => (
-            <button
-              type="button"
-              className={`StickerAdmin-sticker r${s.rarity}`}
-              onclick={() => this.edit(`sticker:${s.id}`, { name: s.name, rarity: s.rarity, file: null, preview: s.full })}
-            >
-              <img src={s.small} alt="" />
-              <span className="StickerAdmin-name">{s.name}</span>
-              <span className="StickerAdmin-meta">
-                {rarity(s.rarity)} · {t('owners', { count: s.owners })}
-              </span>
-            </button>
-          ))}
-        </div>
-        {set.stickers.map((s) => (this.editing === `sticker:${s.id}` ? this.stickerForm(set, s) : null))}
-        {this.editing === `sticker:${set.id}:new` ? (
+        <div className="StickerAdmin-grid">{stickers.map((s) => this.stickerTile(s))}</div>
+        {stickers.map((s) => (this.editing === `sticker:${s.id()}` ? this.stickerForm(set, s) : null))}
+        {this.editing === `sticker:${set.id()}:new` ? (
           this.stickerForm(set, null)
         ) : (
-          <Button className="Button" icon="fas fa-plus" onclick={() => this.edit(`sticker:${set.id}:new`, { name: '', rarity: 0, file: null })}>
+          <Button className="Button" icon="fas fa-plus" onclick={() => this.edit(`sticker:${set.id()}:new`, { name: '', rarity: 0, file: null })}>
             {t('add_sticker')}
           </Button>
         )}
@@ -188,14 +185,31 @@ export default class SetsEditor extends Component {
     );
   }
 
+  /** A sticker in its set's grid; one still without art (its upload failed) shows an image icon until it has some. */
+  stickerTile(s: Sticker) {
+    return (
+      <button
+        type="button"
+        className={`StickerAdmin-sticker r${s.rarity()}`}
+        onclick={() => this.edit(`sticker:${s.id()}`, { name: s.name(), rarity: s.rarity(), file: null, preview: s.full() })}
+      >
+        {s.small() ? <img src={s.small()!} alt="" /> : <Icon name="fas fa-image fa-3x" />}
+        <span className="StickerAdmin-name">{s.name()}</span>
+        <span className="StickerAdmin-meta">
+          {rarity(s.rarity())} · {t('owners', { count: s.ownerCount() })}
+        </span>
+      </button>
+    );
+  }
+
   /** A set's name and tags, with its move and edit buttons. */
-  setHead(set: AdminSet, i: number, count: number) {
-    const badge = this.data!.badges.find((b) => b.id === set.badgeId);
+  setHead(set: StickerSet, i: number, count: number) {
+    const badge = this.badges.find((b) => b.id === set.badgeId());
     return (
       <div className="StickerAdmin-setHead">
-        <h4>{set.name}</h4>
-        {set.hidden ? <span className="StickerAdmin-tag">{t('hidden')}</span> : null}
-        <span className="StickerAdmin-tag">{t('sticker_count', { count: set.stickers.length })}</span>
+        <h4>{set.name()}</h4>
+        {set.isHidden() ? <span className="StickerAdmin-tag">{t('hidden')}</span> : null}
+        <span className="StickerAdmin-tag">{t('sticker_count', { count: set.stickers().length })}</span>
         {badge ? <span className="StickerAdmin-tag">{t('badge_tag', { name: badge.name })}</span> : null}
         <Button
           className="Button Button--icon"
@@ -215,7 +229,12 @@ export default class SetsEditor extends Component {
           className="Button"
           icon="fas fa-pen"
           onclick={() =>
-            this.edit(`set:${set.id}`, { name: set.name, description: set.description || '', badgeId: set.badgeId || '', hidden: set.hidden })
+            this.edit(`set:${set.id()}`, {
+              name: set.name(),
+              description: set.description() || '',
+              badgeId: set.badgeId() || '',
+              hidden: set.isHidden(),
+            })
           }
         >
           {t('edit')}
@@ -224,9 +243,9 @@ export default class SetsEditor extends Component {
     );
   }
 
-  setForm(set: AdminSet | null) {
+  setForm(set: StickerSet | null) {
     const f = this.form as SetForm;
-    const badges = this.data!.badges;
+    const badges = this.badges;
     return (
       <div className="StickerAdmin-form">
         <div className="StickerAdmin-row">
@@ -262,8 +281,10 @@ export default class SetsEditor extends Component {
     );
   }
 
-  stickerForm(set: AdminSet, sticker: AdminSticker | null) {
+  stickerForm(set: StickerSet, sticker: Sticker | null) {
     const f = this.form as StickerForm;
+    // A new sticker, or one whose art upload failed: it needs an image before it can be saved.
+    const needsArt = !sticker?.small();
     return (
       <div className="StickerAdmin-form">
         <div className="StickerAdmin-row">
@@ -282,7 +303,7 @@ export default class SetsEditor extends Component {
           </select>
         </div>
         <label className="helpText">
-          {sticker ? t('replace_art') : t('art')}
+          {needsArt ? t('art') : t('replace_art')}
           <input
             type="file"
             accept="image/png,image/webp,image/jpeg"
@@ -294,7 +315,7 @@ export default class SetsEditor extends Component {
         </label>
         {this.formButtons(
           'sticker',
-          !f.name.trim() || (!sticker && !f.file),
+          !f.name.trim() || (needsArt && !f.file),
           () => this.saveSticker(set, sticker),
           sticker ? () => this.deleteSticker(sticker) : null
         )}
@@ -326,53 +347,67 @@ export default class SetsEditor extends Component {
     this.form = form;
   }
 
-  run(busy: string, promise: Promise<unknown>) {
+  /** Runs a change, then closes the form and loads the sets again; `failed` runs instead if it is rejected. */
+  run(busy: string, promise: Promise<unknown>, failed?: () => unknown) {
     this.busy = busy;
     return promise
       .then(() => {
         this.editing = null;
         return this.load();
       })
-      .catch(() => {
-        /* call() already showed the error */
-      })
+      .catch(() => failed?.()) // alertError already showed the error
       .finally(() => {
         this.busy = null;
         m.redraw();
       });
   }
 
-  saveSet(set: AdminSet | null) {
+  saveSet(set: StickerSet | null) {
     const f = this.form as SetForm;
-    const body = { name: f.name, description: f.description, badgeId: f.badgeId ? Number(f.badgeId) : null, hidden: !!f.hidden };
-    this.run('set', set ? call('PATCH', `/sets/${set.id}`, body) : call('POST', '/sets', body));
+    const attributes = { name: f.name, description: f.description || null, badgeId: f.badgeId ? Number(f.badgeId) : null, isHidden: !!f.hidden };
+    this.run('set', (set || app.store.createRecord<StickerSet>('sticker-book-sets')).save(attributes, { errorHandler: alertError }));
   }
 
-  deleteSet(set: AdminSet) {
-    if (!confirm(extractText(t('delete_set_confirm', { name: set.name })))) return;
-    this.run('set', call('DELETE', `/sets/${set.id}`));
+  deleteSet(set: StickerSet) {
+    if (!confirm(extractText(t('delete_set_confirm', { name: set.name() })))) return;
+    this.run('set', set.delete(undefined, { errorHandler: alertError }));
   }
 
-  saveSticker(set: AdminSet, sticker: AdminSticker | null) {
+  /**
+   * A new sticker is made first and then gets its art; an existing one is
+   * saved only if its name or rarity changed, then gets any new art. If the
+   * art fails on a new sticker, it stays open as that sticker (without art),
+   * so the image can be sent again or the sticker deleted.
+   */
+  saveSticker(set: StickerSet, sticker: Sticker | null) {
     const f = this.form as StickerForm;
-    const data = new FormData();
-    data.append('name', f.name);
-    data.append('rarity', String(f.rarity));
-    if (!sticker) data.append('set', String(set.id));
-    if (f.file) data.append('art', f.file);
-    this.run('sticker', call('POST', sticker ? `/stickers/${sticker.id}` : '/stickers', data, { raw: true }));
+    const fields = { name: f.name, rarity: f.rarity };
+    let saved = sticker;
+    const changed = !sticker || sticker.name() !== f.name || sticker.rarity() !== f.rarity;
+    const save = changed
+      ? (sticker || app.store.createRecord<Sticker>('sticker-book-stickers')).save(sticker ? fields : { ...fields, relationships: { set } }, {
+          errorHandler: alertError,
+        })
+      : Promise.resolve(sticker);
+    const steps = save.then((s) => ((saved = s), f.file ? uploadArt(s, f.file) : s));
+
+    this.run('sticker', steps, () => {
+      if (sticker || !saved) return;
+      this.edit(`sticker:${saved.id()}`, { ...f });
+      return this.load();
+    });
   }
 
-  deleteSticker(sticker: AdminSticker) {
-    if (!confirm(extractText(t('delete_sticker_confirm', { name: sticker.name, count: sticker.owners })))) return;
-    this.run('sticker', call('DELETE', `/stickers/${sticker.id}`));
+  deleteSticker(sticker: Sticker) {
+    if (!confirm(extractText(t('delete_sticker_confirm', { name: sticker.name(), count: sticker.ownerCount() })))) return;
+    this.run('sticker', sticker.delete(undefined, { errorHandler: alertError }));
   }
 
   move(i: number, by: number) {
-    const sets = [...this.data!.sets];
+    const sets = [...this.sets!];
     [sets[i], sets[i + by]] = [sets[i + by], sets[i]];
-    this.data!.sets = sets;
-    call('POST', '/order', { sets: sets.map((s) => s.id) }).catch(() => this.load());
+    this.sets = sets;
+    request('POST', '/sticker-book-sets/order', { sets: sets.map((s) => s.id()) }).catch(() => this.load());
   }
 
   starter() {

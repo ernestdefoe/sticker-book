@@ -1,5 +1,6 @@
-/** 0 common, 1 rare, 2 epic, 3 legendary. */
-export type Rarity = number;
+import type { Card, Rarity } from '../common/types';
+
+export type { Card, Rarity, TradeItem } from '../common/types';
 
 /** A member as our endpoints send them: one compact row each. */
 export interface UserRow {
@@ -43,18 +44,6 @@ export interface AlbumData {
   stats: Partial<AlbumStats>;
 }
 
-/** A sticker from the catalog, as a pack card, a trade item or one of the member's own. */
-export interface Card {
-  id: number;
-  setId: number;
-  name: string;
-  rarity: Rarity;
-  full: string;
-  small: string;
-  count?: number;
-  new?: boolean;
-}
-
 /** The member's pack status (forum.js has it as the forum's stickerStatus). */
 export interface PackStatus {
   packs: number;
@@ -78,29 +67,6 @@ export interface OpenResult {
   source: string;
   completed: { id: number; name: string }[];
   status: PackStatus;
-}
-
-/** [sticker id, how many] */
-export type TradeItem = [number, number];
-
-export type TradeStatus = 'pending' | 'accepted' | 'declined' | 'cancelled' | 'failed' | 'expired';
-
-export interface Trade {
-  id: number;
-  from: number;
-  to: number;
-  status: TradeStatus;
-  give: TradeItem[];
-  take: TradeItem[];
-  message: string | null;
-  createdAt: string;
-  decidedAt: string | null;
-}
-
-export interface TradesData {
-  trades: Trade[];
-  stickers: Card[];
-  users: UserRow[];
 }
 
 export interface BoardData {
@@ -131,11 +97,4 @@ export interface Showcase {
   top: { name: string; rarity: Rarity; small: string }[];
   unique: number;
   total: number;
-}
-
-/** The member a trade is with. */
-export interface TradePartner {
-  id: number;
-  displayName: string | undefined;
-  slug: string | undefined;
 }

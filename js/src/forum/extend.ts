@@ -1,6 +1,7 @@
 import Extend from 'flarum/common/extenders';
 import Post from 'flarum/common/models/Post';
 import User from 'flarum/common/models/User';
+import commonExtend from '../common/extend';
 import { TradeNotification } from './notifications';
 import { loadStyles } from './styles';
 
@@ -11,6 +12,8 @@ const page =
     Promise.all([load(), loadStyles()]).then(([module]) => module);
 
 export default [
+  ...commonExtend,
+
   new Extend.Routes()
     .add(
       'stickers',

@@ -83,6 +83,9 @@ class StickerResource extends AbstractDatabaseResource
                 ->rule('min:0')
                 ->rule('max:'.Settings::LEGENDARY),
             Schema\Integer::make('position'),
+            Schema\Str::make('full')
+                ->nullable()
+                ->get(fn (Sticker $sticker) => $this->art->url($sticker->image, 'full')),
             Schema\Str::make('small')
                 ->nullable()
                 ->get(fn (Sticker $sticker) => $this->art->url($sticker->image, 'small')),

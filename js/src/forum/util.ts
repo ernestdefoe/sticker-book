@@ -2,7 +2,7 @@ import app from 'flarum/forum/app';
 import type User from 'flarum/common/models/User';
 import type { PackStatus, Rarity, UserRow } from './types';
 
-export { call, errorText } from '../common/api';
+export { alertError, call, errorText, quietError, request } from '../common/api';
 
 export const t = (key: string, params: Record<string, unknown> = {}) => app.translator.trans(`ernestdefoe-sticker-book.forum.${key}`, params);
 

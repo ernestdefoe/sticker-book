@@ -1,5 +1,6 @@
 import app from 'flarum/admin/app';
 import Extend from 'flarum/common/extenders';
+import commonExtend from '../common/extend';
 import SetsEditor from './SetsEditor';
 
 const t = (key: string, params?: Record<string, unknown>) => app.translator.trans(`ernestdefoe-sticker-book.admin.${key}`, params || {});
@@ -14,6 +15,8 @@ const odds = (rarity: string) => () => ({
 });
 
 export default [
+  ...commonExtend,
+
   new Extend.Admin()
     .customSetting(() => <SetsEditor />, 300)
     .setting(() => ({ setting: setting('nav'), type: 'boolean', label: t('settings.nav') }), 200)

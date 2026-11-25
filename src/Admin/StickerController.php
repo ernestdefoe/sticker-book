@@ -5,6 +5,7 @@ namespace ErnestDefoe\StickerBook\Admin;
 use ErnestDefoe\StickerBook\Api\Endpoint;
 use ErnestDefoe\StickerBook\Catalog;
 use ErnestDefoe\StickerBook\Exception\StickerException;
+use ErnestDefoe\StickerBook\StarterText;
 use ErnestDefoe\StickerBook\Settings;
 use ErnestDefoe\StickerBook\Storage\Art;
 use ErnestDefoe\StickerBook\Storage\ArtValidator;
@@ -22,7 +23,7 @@ use Psr\Http\Message\ServerRequestInterface;
  */
 class StickerController extends Endpoint
 {
-    public function __construct(private readonly Catalog $catalog, private readonly Art $art)
+    public function __construct(private readonly Catalog $catalog, private readonly Art $art, private readonly StarterText $text)
     {
     }
 
@@ -58,7 +59,10 @@ class StickerController extends Endpoint
             if ($name === '' || mb_strlen($name) > 100) {
                 throw new StickerException('sticker_name_invalid');
             }
-            $sticker->name = $name;
+            // The admin's form shows a starter name translated: sent back unchanged, it stays translated.
+            if ($name !== $this->text->show($sticker->starter_key, 'name', $sticker->name)) {
+                $sticker->name = $name;
+            }
         }
         if (array_key_exists('rarity', $body)) {
             $sticker->rarity = max(0, min(Settings::LEGENDARY, (int) $body['rarity']));

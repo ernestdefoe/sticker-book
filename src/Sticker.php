@@ -12,6 +12,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property int $rarity
  * @property array<string, mixed>|null $image
  * @property int $position
+ * @property string|null $starter_key
  * @property-read StickerSet $set
  */
 class Sticker extends AbstractModel

@@ -5,6 +5,7 @@ namespace ErnestDefoe\StickerBook\Admin;
 use ErnestDefoe\StickerBook\Api\Endpoint;
 use ErnestDefoe\StickerBook\Catalog;
 use ErnestDefoe\StickerBook\Exception\StickerException;
+use ErnestDefoe\StickerBook\StarterText;
 use ErnestDefoe\StickerBook\Storage\Art;
 use ErnestDefoe\StickerBook\Sticker;
 use ErnestDefoe\StickerBook\StickerSet;
@@ -19,7 +20,7 @@ use Psr\Http\Message\ServerRequestInterface;
  */
 class SetController extends Endpoint
 {
-    public function __construct(private readonly Catalog $catalog, private readonly Art $art)
+    public function __construct(private readonly Catalog $catalog, private readonly Art $art, private readonly StarterText $text)
     {
     }
 
@@ -46,10 +47,16 @@ class SetController extends Endpoint
                 if ($name === '' || mb_strlen($name) > 100) {
                     throw new StickerException('sticker_name_invalid');
                 }
-                $set->name = $name;
+                // The admin's form shows a starter text translated: sent back unchanged, it stays translated.
+                if ($name !== $this->text->show($set->starter_key, 'name', $set->name)) {
+                    $set->name = $name;
+                }
             }
             if (array_key_exists('description', $body)) {
-                $set->description = mb_substr(trim((string) $body['description']), 0, 255) ?: null;
+                $description = mb_substr(trim((string) $body['description']), 0, 255) ?: null;
+                if ($description !== $this->text->show($set->starter_key, 'description', $set->description)) {
+                    $set->description = $description;
+                }
             }
             if (array_key_exists('badgeId', $body)) {
                 $set->badge_id = is_numeric($body['badgeId']) && (int) $body['badgeId'] > 0 ? (int) $body['badgeId'] : null;

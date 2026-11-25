@@ -3,6 +3,8 @@
 namespace ErnestDefoe\StickerBook;
 
 use ErnestDefoe\StickerBook\Storage\Art;
+use Flarum\Locale\LocaleManager;
+use Flarum\Locale\TranslatorInterface;
 use Illuminate\Contracts\Cache\Repository;
 
 /**
@@ -12,28 +14,40 @@ use Illuminate\Contracts\Cache\Repository;
  *
  * 🚨 `full` (the art) is only ever sent for stickers the viewer may see in
  * full: someone's album shows missing stickers by `sil` alone.
+ *
+ * Starter texts are translated (StarterText), so there is one entry per
+ * locale, built in the language of the request that first needs it.
  */
 class Catalog
 {
     private const KEY = 'ernestdefoe-sticker-book.catalog';
 
-    /** @var array{sets: list<array<string, mixed>>, stickers: array<int, array<string, mixed>>}|null */
-    private ?array $loaded = null;
+    /** @var array<string, array{sets: list<array<string, mixed>>, stickers: array<int, array<string, mixed>>}> by locale */
+    private array $loaded = [];
 
-    public function __construct(private readonly Repository $cache, private readonly Art $art)
-    {
+    public function __construct(
+        private readonly Repository $cache,
+        private readonly Art $art,
+        private readonly StarterText $text,
+        private readonly TranslatorInterface $translator,
+        private readonly LocaleManager $locales,
+    ) {
     }
 
     /** @return array{sets: list<array<string, mixed>>, stickers: array<int, array<string, mixed>>} */
     public function all(): array
     {
-        return $this->loaded ??= $this->cache->rememberForever(self::KEY, fn () => $this->build());
+        $locale = $this->translator->getLocale();
+
+        return $this->loaded[$locale] ??= $this->cache->rememberForever(self::KEY.'.'.$locale, fn () => $this->build());
     }
 
     public function forget(): void
     {
-        $this->loaded = null;
-        $this->cache->forget(self::KEY);
+        $this->loaded = [];
+        foreach (array_keys($this->locales->getLocales()) as $locale) {
+            $this->cache->forget(self::KEY.'.'.$locale);
+        }
     }
 
     /** @return array<string, mixed>|null */
@@ -87,7 +101,7 @@ class Catalog
                 $out['stickers'][$sticker->id] = [
                     'id' => $sticker->id,
                     'setId' => $set->id,
-                    'name' => $sticker->name,
+                    'name' => $this->text->show($sticker->starter_key, 'name', $sticker->name),
                     'rarity' => $sticker->rarity,
                     'full' => $this->art->url($sticker->image, 'full'),
                     'small' => $this->art->url($sticker->image, 'small'),
@@ -96,8 +110,8 @@ class Catalog
             }
             $out['sets'][] = [
                 'id' => $set->id,
-                'name' => $set->name,
-                'description' => $set->description,
+                'name' => $this->text->show($set->starter_key, 'name', $set->name),
+                'description' => $this->text->show($set->starter_key, 'description', $set->description),
                 'badgeId' => $set->badge_id,
                 'hidden' => $set->is_hidden,
                 'stickers' => $ids,

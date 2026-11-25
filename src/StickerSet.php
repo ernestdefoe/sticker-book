@@ -12,6 +12,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property int|null $badge_id
  * @property int $position
  * @property bool $is_hidden
+ * @property string|null $starter_key
  */
 class StickerSet extends AbstractModel
 {

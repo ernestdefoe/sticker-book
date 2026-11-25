@@ -1,0 +1,10 @@
+ernestdefoe-sticker-book:
+  lib:
+    starter:
+      forest-friends:
+        name: Waldfreunde
+        description: Waldbewohner, die kein Picknick verpassen.
+        fox:
+          name: Fuchs
+        owl:
+          name: Eule

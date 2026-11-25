@@ -3,3 +3,4 @@
 /phpstan.neon export-ignore
 /screenshots export-ignore
 /art export-ignore
+/CLAUDE.md export-ignore

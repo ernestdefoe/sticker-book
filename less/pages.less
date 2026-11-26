@@ -625,8 +625,12 @@
   }
 }
 
+// A row is the member (name, and the count under it), then the button. The
+// name gives way with an ellipsis and nothing wraps mid-label, whatever the
+// language: the button is its icon, its label is the tooltip and the aria-label.
 .StickerSpares-who {
   display: flex;
+  flex: 1 1 auto;
   align-items: center;
   gap: 8px;
   min-width: 0;
@@ -634,12 +638,31 @@
 
   .Avatar {
     --size: 28px;
+    flex: none;
   }
+}
+
+.StickerSpares-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.3;
+}
+
+.StickerSpares-name,
+.StickerSpares-n {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .StickerSpares-n {
   color: var(--muted-color);
   font-size: 12px;
+}
+
+.StickerSpares-propose {
+  flex: none;
 }
 
 // The trade form.

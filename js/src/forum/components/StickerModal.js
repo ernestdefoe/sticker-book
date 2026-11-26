@@ -96,11 +96,19 @@ export default class StickerModal extends Modal {
               return (
                 <li>
                   <span className="StickerSpares-who">
-                    <Avatar user={u} /> {username(u)} <span className="StickerSpares-n">{t('sticker.spare_count', { count: n })}</span>
+                    <Avatar user={u} />
+                    <span className="StickerSpares-text">
+                      <span className="StickerSpares-name">{username(u)}</span>
+                      <span className="StickerSpares-n">{t('sticker.spare_count', { count: n })}</span>
+                    </span>
                   </span>
-                  <Button className="Button Button--primary" onclick={() => this.trade({ to: row, take: [[s.id, 1]] })}>
-                    {t('sticker.propose')}
-                  </Button>
+                  <Button
+                    className="Button Button--primary Button--icon StickerSpares-propose"
+                    icon="fas fa-right-left"
+                    aria-label={t('sticker.propose')}
+                    title={t('sticker.propose')}
+                    onclick={() => this.trade({ to: row, take: [[s.id, 1]] })}
+                  />
                 </li>
               );
             })}

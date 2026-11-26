@@ -440,6 +440,80 @@ class StickerBookTest extends TestCase
     }
 
     #[Test]
+    public function a_set_comes_out_of_packs_only_inside_its_window(): void
+    {
+        $this->db()->table('sticker_sets')->where('id', 2)->update(['available_from' => '2030-12-20 00:00:00', 'available_until' => '2030-12-27 00:00:00']);
+        $catalog = $this->app()->getContainer()->make(Catalog::class);
+        $catalog->forget();
+        $snacks = [5, 6];
+
+        $this->assertSame([], array_values(array_intersect($snacks, array_keys($catalog->packableStickers(Carbon::parse('2030-12-19 23:59:59'))))));
+        $this->assertSame($snacks, array_values(array_intersect($snacks, array_keys($catalog->packableStickers(Carbon::parse('2030-12-20 00:00:00'))))));
+        $this->assertSame([], array_values(array_intersect($snacks, array_keys($catalog->packableStickers(Carbon::parse('2030-12-27 00:00:00'))))));
+        // Outside its window the set is still in albums (and its stickers still trade).
+        $this->assertArrayHasKey(5, $catalog->liveStickers());
+    }
+
+    #[Test]
+    public function packs_opened_outside_a_window_never_hold_its_stickers(): void
+    {
+        $this->db()->table('sticker_sets')->where('id', 2)->update(['available_until' => Carbon::now()->subDay()]);
+        $this->setting('ernestdefoe-sticker-book.odds_common', 100);
+        foreach (['rare', 'epic', 'legendary'] as $r) {
+            $this->setting("ernestdefoe-sticker-book.odds_$r", 0);
+        }
+        $this->setting('ernestdefoe-sticker-book.guarantee_rare', 0);
+        $this->app()->getContainer()->make(Packs::class)->gift(2, 3);
+
+        for ($i = 0; $i < 4; $i++) {
+            [$status, $body] = $this->api('POST', '/open', 2);
+            $this->assertSame(200, $status, json_encode($body));
+            $this->assertSame([], array_values(array_intersect([5, 6], array_column($body['cards'], 'id'))));
+        }
+    }
+
+    #[Test]
+    public function with_every_window_closed_a_pack_waits_and_nothing_is_spent(): void
+    {
+        $this->db()->table('sticker_sets')->update(['available_until' => Carbon::now()->subDay()]);
+        $this->app()->getContainer()->make(Packs::class)->gift(2, 1);
+        $before = $this->api('GET', '/me', 2)[1];
+
+        [$status, $body] = $this->api('POST', '/open', 2);
+        $this->assertSame(422, $status);
+        $this->assertSame('sticker_none_in_packs', $body['errors'][0]['code']);
+
+        // The free daily pack is still unclaimed and the gift still waits.
+        $after = $this->api('GET', '/me', 2)[1];
+        $this->assertSame($before['packs'], $after['packs']);
+        $this->assertSame($before['daily'], $after['daily']);
+        $this->assertSame(1, $this->db()->table('sticker_packs')->where('user_id', 2)->whereNull('opened_at')->count());
+        $this->assertNull($this->db()->table('sticker_collectors')->where('user_id', 2)->value('daily_on'));
+        $this->assertSame(0, $this->db()->table('sticker_owned')->where('user_id', 2)->count());
+    }
+
+    #[Test]
+    public function the_admin_sets_a_window_and_the_album_shows_it(): void
+    {
+        $patch = fn (array $body) => $this->api('PATCH', '/sets/2', 1, $body);
+
+        [$status, $body] = $patch(['availableFrom' => '2030-12-27T00:00:00Z', 'availableUntil' => '2030-12-20T00:00:00Z']);
+        $this->assertSame(422, $status);
+        $this->assertSame('sticker_window_invalid', $body['errors'][0]['code']);
+        $this->assertSame(422, $patch(['availableFrom' => 'not a date'])[0]);
+
+        $this->assertSame(200, $patch(['availableFrom' => '2030-12-20T00:00:00+01:00', 'availableUntil' => '2030-12-27T00:00:00Z'])[0]);
+        $album = $this->api('GET', '/album', 2, [], ['user' => 'normal'])[1];
+        $snacks = $album['sets'][1];
+        $this->assertSame('2030-12-19T23:00:00+00:00', $snacks['availableFrom']);
+        $this->assertSame('2030-12-27T00:00:00+00:00', $snacks['availableUntil']);
+
+        // Emptied, it is in packs all the time again.
+        $this->assertSame(200, $patch(['availableFrom' => '', 'availableUntil' => null])[0]);
+        $this->assertNull($this->db()->table('sticker_sets')->where('id', 2)->value('available_from'));
+    }
+
+    #[Test]
     public function admin_endpoints_are_for_admins(): void
     {
         $this->assertSame(403, $this->api('GET', '/admin', 2)[0]);

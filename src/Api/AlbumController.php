@@ -51,6 +51,9 @@ class AlbumController extends Endpoint
                 'id' => $set['id'],
                 'name' => $set['name'],
                 'description' => $set['description'],
+                // An event set's window, so the album can say when its stickers come out of packs.
+                'availableFrom' => $set['availableFrom'],
+                'availableUntil' => $set['availableUntil'],
                 'completedAt' => isset($completed[$set['id']]) ? (string) $completed[$set['id']] : null,
                 'stickers' => $rows,
             ];

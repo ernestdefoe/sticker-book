@@ -110,9 +110,11 @@ class Packs
      */
     public function open(User $user): array
     {
+        // Checked before anything is claimed: with no set in packs right now (every
+        // event set's window closed), the member keeps their pack for later.
         $pools = $this->pools();
         if (! $pools) {
-            throw new StickerException('sticker_book_empty');
+            throw new StickerException($this->catalog->liveStickers() ? 'sticker_none_in_packs' : 'sticker_book_empty');
         }
 
         $result = $this->db->transaction(function () use ($user, $pools): array {
@@ -252,7 +254,8 @@ class Packs
     private function pools(): array
     {
         $pools = [];
-        foreach ($this->catalog->liveStickers() as $id => $sticker) {
+        // Only sets whose availability window is open: an event set's stickers come out during the event.
+        foreach ($this->catalog->packableStickers() as $id => $sticker) {
             $pools[$sticker['rarity']][] = $id;
         }
 

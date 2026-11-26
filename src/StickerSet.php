@@ -13,6 +13,8 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property int $position
  * @property bool $is_hidden
  * @property string|null $starter_key
+ * @property \Carbon\Carbon|null $available_from
+ * @property \Carbon\Carbon|null $available_until
  */
 class StickerSet extends AbstractModel
 {
@@ -20,7 +22,7 @@ class StickerSet extends AbstractModel
 
     public $timestamps = true;
 
-    protected $casts = ['badge_id' => 'integer', 'position' => 'integer', 'is_hidden' => 'boolean'];
+    protected $casts = ['badge_id' => 'integer', 'position' => 'integer', 'is_hidden' => 'boolean', 'available_from' => 'datetime', 'available_until' => 'datetime'];
 
     /** @return HasMany<Sticker, $this> */
     public function stickers(): HasMany

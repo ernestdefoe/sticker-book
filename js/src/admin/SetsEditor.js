@@ -4,6 +4,16 @@ import LoadingIndicator from 'flarum/common/components/LoadingIndicator';
 import Switch from 'flarum/common/components/Switch';
 import extractText from 'flarum/common/utils/extractText';
 
+// An ISO time as a datetime-local value in the admin's own time zone, and back;
+// and as a date and time in the forum's language.
+const toLocal = (iso) => {
+  if (!iso) return '';
+  const d = new Date(iso);
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+};
+const toIso = (local) => (local ? new Date(local).toISOString() : null);
+const when = (iso) =>
+  new Intl.DateTimeFormat(document.documentElement.lang || undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(iso));
 const t = (key, params = {}) => app.translator.trans(`ernestdefoe-sticker-book.admin.sets.${key}`, params);
 const RARITIES = ['common', 'rare', 'epic', 'legendary'];
 const rarity = (r) => app.translator.trans(`ernestdefoe-sticker-book.admin.rarity.${RARITIES[r]}`);
@@ -82,7 +92,7 @@ export default class SetsEditor {
             <Button
               className="Button"
               icon="fas fa-plus"
-              onclick={() => this.edit('set:new', { name: '', description: '', badgeId: '', hidden: true })}
+              onclick={() => this.edit('set:new', { name: '', description: '', badgeId: '', hidden: true, availableFrom: '', availableUntil: '' })}
             >
               {t('add_set')}
             </Button>
@@ -136,6 +146,8 @@ export default class SetsEditor {
           {set.hidden ? <span className="StickerAdmin-tag">{t('hidden')}</span> : null}
           <span className="StickerAdmin-tag">{t('sticker_count', { count: set.stickers.length })}</span>
           {badge ? <span className="StickerAdmin-tag">{t('badge_tag', { name: badge.name })}</span> : null}
+          {set.availableFrom ? <span className="StickerAdmin-tag">{t('window_from_tag', { date: when(set.availableFrom) })}</span> : null}
+          {set.availableUntil ? <span className="StickerAdmin-tag">{t('window_until_tag', { date: when(set.availableUntil) })}</span> : null}
           <Button
             className="Button Button--icon"
             icon="fas fa-arrow-up"
@@ -154,7 +166,14 @@ export default class SetsEditor {
             className="Button"
             icon="fas fa-pen"
             onclick={() =>
-              this.edit(`set:${set.id}`, { name: set.name, description: set.description || '', badgeId: set.badgeId || '', hidden: set.hidden })
+              this.edit(`set:${set.id}`, {
+                name: set.name,
+                description: set.description || '',
+                badgeId: set.badgeId || '',
+                hidden: set.hidden,
+                availableFrom: toLocal(set.availableFrom),
+                availableUntil: toLocal(set.availableUntil),
+              })
             }
           >
             {t('edit')}
@@ -219,6 +238,17 @@ export default class SetsEditor {
           oninput={(e) => (f.description = e.target.value)}
         />
         {this.data.badges.length ? null : <p className="helpText">{t('badges_help')}</p>}
+        <div className="StickerAdmin-row StickerAdmin-window">
+          <label>
+            {t('available_from')}
+            <input type="datetime-local" className="FormControl" value={f.availableFrom} oninput={(e) => (f.availableFrom = e.target.value)} />
+          </label>
+          <label>
+            {t('available_until')}
+            <input type="datetime-local" className="FormControl" value={f.availableUntil} oninput={(e) => (f.availableUntil = e.target.value)} />
+          </label>
+        </div>
+        <p className="helpText">{t('window_help')}</p>
         <Switch state={!f.hidden} onchange={(on) => (f.hidden = !on)}>
           {t('visible')}
         </Switch>
@@ -312,7 +342,14 @@ export default class SetsEditor {
 
   saveSet(set) {
     const f = this.form;
-    const body = { name: f.name, description: f.description, badgeId: f.badgeId ? Number(f.badgeId) : null, hidden: !!f.hidden };
+    const body = {
+      name: f.name,
+      description: f.description,
+      badgeId: f.badgeId ? Number(f.badgeId) : null,
+      hidden: !!f.hidden,
+      availableFrom: toIso(f.availableFrom),
+      availableUntil: toIso(f.availableUntil),
+    };
     this.run('set', set ? api('PATCH', `/sets/${set.id}`, body) : api('POST', '/sets', body));
   }
 

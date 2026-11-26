@@ -8,6 +8,33 @@ import { openSticker } from './StickerModal';
  * what they're missing (a silhouette: the server never sent the art).
  * Filters: everything, missing, spares.
  */
+/**
+ * An event set's window, when it has one: coming to packs, in packs until a
+ * date, or no longer in packs (its stickers still trade).
+ */
+function windowBadge(set) {
+  const now = Date.now();
+  const from = set.availableFrom ? new Date(set.availableFrom).getTime() : null;
+  const until = set.availableUntil ? new Date(set.availableUntil).getTime() : null;
+  const date = (time) => new Intl.DateTimeFormat(document.documentElement.lang || undefined, { dateStyle: 'medium' }).format(time);
+  let icon, text;
+  if (from && now < from) {
+    [icon, text] = ['far fa-clock', t('album.window_upcoming', { date: date(from) })];
+  } else if (until && now >= until) {
+    [icon, text] = ['fas fa-hourglass-end', t('album.window_ended', { date: date(until) })];
+  } else if (until) {
+    [icon, text] = ['fas fa-hourglass-half', t('album.window_open', { date: date(until) })];
+  } else {
+    return null;
+  }
+
+  return (
+    <span className="StickerSet-window">
+      <Icon name={icon} /> {text}
+    </span>
+  );
+}
+
 export default class Album {
   oninit() {
     this.filter = 'all';
@@ -63,6 +90,7 @@ export default class Album {
                       ) : null}
                     </h3>
                     {set.description ? <p>{set.description}</p> : null}
+                    {windowBadge(set)}
                   </div>
                   <div className="StickerSet-progress" aria-label={t('album.progress_label', { have, total: set.stickers.length })}>
                     <span className="StickerSet-count">

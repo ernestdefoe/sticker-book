@@ -2,6 +2,8 @@
 
 namespace ErnestDefoe\StickerBook\Admin;
 
+use Carbon\Carbon;
+use Carbon\Exceptions\InvalidFormatException;
 use ErnestDefoe\StickerBook\Api\Endpoint;
 use ErnestDefoe\StickerBook\Catalog;
 use ErnestDefoe\StickerBook\Exception\StickerException;
@@ -15,7 +17,7 @@ use Psr\Http\Message\ServerRequestInterface;
 
 /**
  * POST /api/sticker-book/sets (create), PATCH /api/sticker-book/sets/{id}
- * (name, description, badge, hidden), DELETE /api/sticker-book/sets/{id}
+ * (name, description, badge, hidden, availability window), DELETE /api/sticker-book/sets/{id}
  * (with its stickers, their art and every copy members had).
  */
 class SetController extends Endpoint
@@ -64,6 +66,7 @@ class SetController extends Endpoint
             if (array_key_exists('hidden', $body)) {
                 $set->is_hidden = (bool) $body['hidden'];
             }
+            $this->window($set, $body);
             if (! $set->exists) {
                 $set->position = (int) StickerSet::query()->max('position') + 1;
             }
@@ -73,5 +76,34 @@ class SetController extends Endpoint
         $this->catalog->forget();
 
         return ['id' => $set->id];
+    }
+
+    /**
+     * availableFrom / availableUntil: ISO 8601 times, or empty for no limit.
+     * The end must come after the start.
+     *
+     * @param array<string, mixed> $body
+     */
+    private function window(StickerSet $set, array $body): void
+    {
+        foreach (['availableFrom' => 'available_from', 'availableUntil' => 'available_until'] as $field => $column) {
+            if (! array_key_exists($field, $body)) {
+                continue;
+            }
+            $value = $body[$field];
+            if ($value === null || $value === '') {
+                $set->$column = null;
+                continue;
+            }
+            try {
+                $set->$column = Carbon::parse((string) $value)->utc();
+            } catch (InvalidFormatException) {
+                throw new StickerException('sticker_window_invalid');
+            }
+        }
+
+        if ($set->available_from && $set->available_until && ! $set->available_until->gt($set->available_from)) {
+            throw new StickerException('sticker_window_invalid');
+        }
     }
 }

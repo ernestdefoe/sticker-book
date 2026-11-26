@@ -171,26 +171,42 @@ export default class TradeModal extends Modal {
         </div>
       );
     }
-    const spares = album.sets.flatMap((set) => set.stickers).filter((s) => s.count > 1 && !other.has(s.id));
+    // On their side, the spares the viewer doesn't have yet come first and are marked.
+    const have =
+      !mine && this.mine
+        ? new Set(
+            this.mine.sets
+              .flatMap((set) => set.stickers)
+              .filter((s) => s.count > 0)
+              .map((s) => s.id)
+          )
+        : null;
+    const needed = (s) => !!have && !have.has(s.id);
+    const spares = album.sets
+      .flatMap((set) => set.stickers)
+      .filter((s) => s.count > 1 && !other.has(s.id))
+      .sort((a, b) => needed(b) - needed(a));
 
     return (
       <div className="StickerTrade-side">
         <h4>{title}</h4>
+        {spares.some(needed) ? <p className="StickerTrade-needHint">{t('trade.needed_hint')}</p> : null}
         {spares.length ? (
           <div className="StickerTrade-grid">
             {spares.map((s) => {
               const n = chosen.get(s.id) || 0;
               const max = s.count - 1;
               return (
-                <div className={`StickerTrade-item StickerTile--r${s.rarity} ${n ? 'is-chosen' : ''}`}>
+                <div className={`StickerTrade-item StickerTile--r${s.rarity} ${n ? 'is-chosen' : ''} ${needed(s) ? 'is-needed' : ''}`}>
                   <button
                     type="button"
                     className="StickerTrade-pick"
-                    title={`${s.name} · ${rarityName(s.rarity)}`}
+                    title={[s.name, rarityName(s.rarity), needed(s) ? t('trade.needed') : null].filter(Boolean).join(' · ')}
                     aria-pressed={n ? 'true' : 'false'}
                     onclick={() => (n ? chosen.delete(s.id) : chosen.set(s.id, 1))}
                   >
                     <img src={s.small} alt={s.name} draggable="false" />
+                    {needed(s) ? <span className="StickerTrade-need">{t('trade.needed')}</span> : null}
                     <span className="StickerTrade-spare">{n ? `${n}/${max}` : `×${max}`}</span>
                   </button>
                   {n ? (

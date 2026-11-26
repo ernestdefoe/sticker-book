@@ -2,6 +2,7 @@
 
 namespace ErnestDefoe\StickerBook;
 
+use Carbon\Carbon;
 use ErnestDefoe\StickerBook\Storage\Art;
 use Flarum\Locale\LocaleManager;
 use Flarum\Locale\TranslatorInterface;
@@ -76,7 +77,39 @@ class Catalog
         return $out;
     }
 
-    /** @return array<string, mixed> A sticker as anyone may see it once they have it. */
+    /**
+     * Stickers that can come out of a pack right now: those of live sets whose
+     * availability window (if they have one) is open. The window is checked
+     * on every call, so the cached catalog never needs rebuilding when one
+     * opens or closes.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function packableStickers(?Carbon $now = null): array
+    {
+        $now ??= Carbon::now();
+        $out = [];
+        $stickers = $this->all()['stickers'];
+        foreach ($this->liveSets() as $set) {
+            if (! self::isOpen($set, $now)) {
+                continue;
+            }
+            foreach ($set['stickers'] as $id) {
+                $out[$id] = $stickers[$id];
+            }
+        }
+
+        return $out;
+    }
+
+    /** @param array<string, mixed> $set */
+    public static function isOpen(array $set, Carbon $now): bool
+    {
+        return (! $set['availableFrom'] || $now->gte(Carbon::parse($set['availableFrom'])))
+            && (! $set['availableUntil'] || $now->lt(Carbon::parse($set['availableUntil'])));
+    }
+
+    /** @return array<string, mixed>|null A sticker as anyone may see it once they have it; null when it is not in a live set. */
     public function card(int $id): ?array
     {
         $s = $this->sticker($id);
@@ -114,6 +147,8 @@ class Catalog
                 'description' => $this->text->show($set->starter_key, 'description', $set->description),
                 'badgeId' => $set->badge_id,
                 'hidden' => $set->is_hidden,
+                'availableFrom' => $set->available_from?->toIso8601String(),
+                'availableUntil' => $set->available_until?->toIso8601String(),
                 'stickers' => $ids,
             ];
         }

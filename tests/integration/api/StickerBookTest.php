@@ -11,6 +11,7 @@ use Flarum\Post\Post;
 use Flarum\Testing\integration\RetrievesAuthorizedUsers;
 use Flarum\Testing\integration\TestCase;
 use Flarum\User\User;
+use Illuminate\Contracts\Cache\Repository;
 use Illuminate\Database\ConnectionInterface;
 use PHPUnit\Framework\Attributes\Test;
 
@@ -49,6 +50,14 @@ class StickerBookTest extends TestCase
                 ['id' => 1, 'discussion_id' => 1, 'user_id' => 2, 'type' => 'comment', 'content' => '<t><p>Hi</p></t>', 'created_at' => $now, 'number' => 1],
             ],
         ]);
+    }
+
+    protected function tearDown(): void
+    {
+        // The cache outlives a test (the catalog, the rate limits, the locks): each test leaves it empty.
+        $this->app()->getContainer()->make(Repository::class)->flush();
+
+        parent::tearDown();
     }
 
     /** @return array{int, array<string, mixed>|null} */
